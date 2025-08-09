@@ -67,80 +67,88 @@ async function sleep(ms) {
 async function getTranscriptFromYouTube(videoId) {
   console.log('Trying YouTube Transcript API...');
   try {
-    // Method 1: Using the fetchTranscript function
-    try {
-      const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
-      if (Array.isArray(transcriptItems) && transcriptItems.length > 0) {
-        // Format the transcript into a readable text
-        const sentences = [];
-        let currentSentence = '';
-        
-        // Process transcript items into sentences
-        for (const item of transcriptItems) {
-          const text = item.text.trim();
-          if (!text) continue;
-          
-          if (text.endsWith('.') || text.endsWith('!') || text.endsWith('?')) {
-            // Complete sentence
-            currentSentence += (currentSentence ? ' ' : '') + text;
-            sentences.push(currentSentence);
-            currentSentence = '';
-          } else {
-            // Part of a sentence
-            currentSentence += (currentSentence ? ' ' : '') + text;
-          }
-        }
-        
-        // Add any remaining text
-        if (currentSentence) {
-          sentences.push(currentSentence);
-        }
-        
-        const formattedTranscript = sentences.join('. ').replace(/\.\./g, '.');
-        console.log(`Successfully extracted transcript with YouTube API (${formattedTranscript.length} chars)`);
-        return formattedTranscript;
-      } else {
-        console.log('YouTube API returned no transcript items');
-      }
-    } catch (error) {
-      console.log('First YouTube API method failed:', error?.message || error);
-      
-      // Method 2: Try with different language options
+    // Try multiple approaches with different language options
+    const languageOptions = [
+      undefined, // Default (auto-detect)
+      { lang: 'en' }, // English
+      { lang: 'en', country: 'US' }, // US English
+      { lang: 'en', country: 'GB' }, // UK English
+      { lang: 'auto' } // Auto-generated
+    ];
+    
+    // Try each language option
+    for (const options of languageOptions) {
       try {
-        console.log('Trying YouTube API with language fallbacks...');
-        // Try with auto-generated captions
-        const options = { lang: 'en', country: 'US' };
+        const optionsDesc = options ? 
+          `with options ${JSON.stringify(options)}` : 
+          'with default options';
+        console.log(`Trying YouTube Transcript API ${optionsDesc}...`);
+        
         const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, options);
         
         if (Array.isArray(transcriptItems) && transcriptItems.length > 0) {
-          // Format the transcript into readable sentences
+          // Format the transcript into a readable text
           const sentences = [];
           let currentSentence = '';
           
+          // Process transcript items into sentences
           for (const item of transcriptItems) {
             const text = item.text.trim();
             if (!text) continue;
             
             if (text.endsWith('.') || text.endsWith('!') || text.endsWith('?')) {
+              // Complete sentence
               currentSentence += (currentSentence ? ' ' : '') + text;
               sentences.push(currentSentence);
               currentSentence = '';
             } else {
+              // Part of a sentence
               currentSentence += (currentSentence ? ' ' : '') + text;
             }
           }
           
+          // Add any remaining text
           if (currentSentence) {
             sentences.push(currentSentence);
           }
           
           const formattedTranscript = sentences.join('. ').replace(/\.\./g, '.');
-          console.log(`Successfully extracted transcript with YouTube API fallback (${formattedTranscript.length} chars)`);
+          console.log(`Successfully extracted transcript with YouTube API (${formattedTranscript.length} chars)`);
           return formattedTranscript;
+        } else {
+          console.log(`YouTube API ${optionsDesc} returned no transcript items`);
         }
-      } catch (fallbackError) {
-        console.log('YouTube API fallback also failed:', fallbackError?.message || fallbackError);
+      } catch (error) {
+        console.log(`YouTube API attempt ${optionsDesc} failed:`, error?.message || error);
+        // Continue to next option
       }
+    }
+    
+    // If we get here, all language options failed
+    console.log('All YouTube API language options failed');
+    
+    // Try one more approach - direct fetch with different options
+    try {
+      console.log('Trying YouTube API with direct fetch approach...');
+      
+      // Try to get any available transcript
+      const result = await fetch(`https://youtubetranscript.com/api/?v=${videoId}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      
+      if (result.ok) {
+        const data = await result.json();
+        if (data && data.transcript) {
+          console.log(`Successfully got transcript from direct API (${data.transcript.length} chars)`);
+          return data.transcript;
+        }
+      }
+    } catch (directError) {
+      console.log('Direct API approach failed:', directError?.message || directError);
     }
   } catch (error) {
     console.error('All YouTube Transcript API methods failed:', error?.message || error);
@@ -281,11 +289,17 @@ async function getTranscriptFromBrowser(videoId) {
         const youtubeUrl = getYouTubeUrl(videoId);
         const encodedUrl = encodeURIComponent(youtubeUrl);
         const urlsToTry = [
+          // Try direct YouTube URL first (sometimes works better)
+          youtubeUrl,
+          // Then try transcript services
           `https://tactiq.io/tools/youtube-transcript?yt=${encodedUrl}`,
           `https://tactiq.io/tools/run/youtube_transcript?yt=${encodedUrl}`,
           `https://tactiq.io/tools/youtube-transcript/${videoId}`,
           `https://youtubetranscript.com/?v=${videoId}`,
-          `https://youtubetranscript.com/${videoId}`
+          `https://youtubetranscript.com/${videoId}`,
+          // Additional services
+          `https://www.veed.io/tools/youtube-transcript/transcript?url=${encodedUrl}`,
+          `https://www.transcribeme.com/youtube-transcription?v=${videoId}`
         ];
     
     for (const tactiqUrl of urlsToTry) {
@@ -333,6 +347,12 @@ async function getTranscriptFromBrowser(videoId) {
         
         // Enhanced selector list based on various transcript websites
         const transcriptSelectors = [
+          // YouTube direct selectors
+          'ytd-transcript-body-renderer',
+          'ytd-transcript-renderer',
+          'ytd-transcript-segment-renderer',
+          '#segments-container',
+          // Service-specific selectors
           '.transcript-container',
           'pre',
           '[data-testid="transcript"]',
@@ -347,12 +367,17 @@ async function getTranscriptFromBrowser(videoId) {
           '.transcriptcontainer',
           '.transcription',
           '.caption-line',
+          // VEED.io selectors
+          '.transcript-text-container',
+          '.transcript-content',
           // More generic selectors
           'div.transcript',
           'div#transcript',
           'div.transcript-text',
           '.transcript-text',
           '#transcript-text',
+          // Fallbacks for YouTube
+          '.ytp-caption-segment',
           // Very generic fallbacks
           'div:not(:empty)',
           'pre:not(:empty)',
@@ -589,6 +614,148 @@ async function getTranscriptFromYtDlp(videoId) {
  * @param {string} videoId - YouTube video ID
  * @returns {Promise<string|null>} - Transcript text or null if not available
  */
+/**
+ * Extract transcript directly from YouTube by accessing the transcript button
+ * @param {string} videoId YouTube video ID
+ * @returns {Promise<string|null>} Transcript text or null if not found
+ */
+async function getTranscriptDirectFromYouTube(videoId) {
+  console.log('Trying direct YouTube transcript extraction...');
+  let browser = null;
+  
+  try {
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+    
+    // Set viewport and user agent
+    await page.setViewport({ width: 1366, height: 768 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    // Go to YouTube video page
+    const youtubeUrl = getYouTubeUrl(videoId);
+    console.log(`Navigating to YouTube video: ${youtubeUrl}`);
+    
+    await page.goto(youtubeUrl, { 
+      waitUntil: ['domcontentloaded', 'networkidle2'],
+      timeout: 60000 
+    });
+    
+    // Wait for page to load
+    await page.waitForSelector('video', { timeout: 30000 });
+    
+    // Accept cookies if present
+    try {
+      const cookieButton = await page.$('button[aria-label="Accept all"]');
+      if (cookieButton) {
+        await cookieButton.click();
+        await page.waitForTimeout(1000);
+      }
+    } catch (e) {
+      console.log('No cookie dialog found or error clicking it');
+    }
+    
+    // Click on "..." button to show more options
+    console.log('Looking for "..." menu button');
+    try {
+      // Try different selectors for the "..." button
+      const moreButtonSelectors = [
+        'button[aria-label="More actions"]',
+        'ytd-menu-renderer button',
+        'button.ytp-button[aria-label="More actions"]',
+        'button.ytp-settings-button'
+      ];
+      
+      let moreButton = null;
+      for (const selector of moreButtonSelectors) {
+        moreButton = await page.$(selector);
+        if (moreButton) {
+          console.log(`Found "..." button with selector: ${selector}`);
+          break;
+        }
+      }
+      
+      if (moreButton) {
+        await moreButton.click();
+        await page.waitForTimeout(1000);
+      } else {
+        console.log('Could not find "..." button');
+      }
+    } catch (e) {
+      console.log('Error clicking "..." button:', e.message);
+    }
+    
+    // Look for "Show transcript" option
+    console.log('Looking for "Show transcript" option');
+    try {
+      const transcriptSelectors = [
+        'ytd-menu-service-item-renderer:has-text("Show transcript")',
+        'ytd-menu-service-item-renderer:has-text("Open transcript")',
+        'button:has-text("Show transcript")',
+        'button:has-text("Open transcript")'
+      ];
+      
+      let transcriptOption = null;
+      for (const selector of transcriptSelectors) {
+        transcriptOption = await page.$(selector);
+        if (transcriptOption) {
+          console.log(`Found transcript option with selector: ${selector}`);
+          await transcriptOption.click();
+          await page.waitForTimeout(2000);
+          break;
+        }
+      }
+    } catch (e) {
+      console.log('Error clicking transcript option:', e.message);
+    }
+    
+    // Extract transcript text
+    console.log('Looking for transcript text');
+    const transcriptSelectors = [
+      'ytd-transcript-body-renderer',
+      'ytd-transcript-segment-list-renderer',
+      'ytd-transcript-segment-renderer',
+      '.ytd-transcript-segment-renderer',
+      '#segments-container'
+    ];
+    
+    let transcriptText = '';
+    for (const selector of transcriptSelectors) {
+      try {
+        const elements = await page.$$(selector);
+        if (elements && elements.length > 0) {
+          console.log(`Found ${elements.length} transcript elements with selector: ${selector}`);
+          
+          // Extract text from all elements
+          for (const element of elements) {
+            const text = await page.evaluate(el => el.innerText, element);
+            if (text && text.trim()) {
+              transcriptText += text.trim() + '\n';
+            }
+          }
+          
+          if (transcriptText.length > 100) {
+            console.log(`Successfully extracted transcript directly from YouTube (${transcriptText.length} chars)`);
+            return transcriptText;
+          }
+        }
+      } catch (e) {
+        console.log(`Error with selector ${selector}:`, e.message);
+      }
+    }
+    
+    console.log('Direct YouTube transcript extraction failed');
+    return null;
+  } catch (error) {
+    console.error('Error in direct YouTube transcript extraction:', error);
+    return null;
+  } finally {
+    if (browser) {
+      await browser.close();
+      console.log('Browser closed after direct YouTube extraction');
+    }
+  }
+}
+
 async function getTranscript(videoId) {
   try {
     const youtubeUrl = getYouTubeUrl(videoId);
@@ -620,7 +787,16 @@ async function getTranscript(videoId) {
       try {
         console.log(`Transcript extraction attempt ${retries + 1}/${MAX_RETRIES}`);
         
-        // First try yt-dlp (most reliable)
+        // First try direct YouTube extraction (new method)
+        const directYouTubeTranscript = await getTranscriptDirectFromYouTube(videoId);
+        if (directYouTubeTranscript) {
+          console.log('Direct YouTube extraction succeeded');
+          if (CACHE_TRANSCRIPTS) await saveTranscript(videoId, directYouTubeTranscript);
+          return directYouTubeTranscript;
+        }
+        
+        // Then try yt-dlp
+        console.log('Direct YouTube extraction failed, trying yt-dlp...');
         const ytDlpTranscript = await getTranscriptFromYtDlp(videoId);
         if (ytDlpTranscript) {
           console.log('yt-dlp method succeeded');
