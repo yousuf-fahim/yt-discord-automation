@@ -1,0 +1,35 @@
+{
+  "name": "yt-discord-automation",
+  "version": "1.0.0",
+  "description": "YouTube to Discord AI Automation Bot",
+  "main": "api/listener.js",
+  "scripts": {
+    "start": "node api/listener.js",
+    "dev": "nodemon api/listener.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "heroku-postbuild": "pip3 install yt-dlp"
+  },
+  "keywords": [
+    "discord",
+    "youtube",
+    "openai",
+    "automation",
+    "puppeteer"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.2",
+    "openai": "^4.10.0",
+    "puppeteer": "^24.16.0",
+    "youtube-transcript": "^1.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.9.0"
+  }
+}
