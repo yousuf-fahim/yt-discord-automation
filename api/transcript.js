@@ -43,7 +43,7 @@ async function launchBrowser() {
   const attempts = [
     { 
       headless: true, 
-      executablePath: process.env.CHROME_BIN || '/opt/google/chrome/chrome',
+      executablePath: process.env.CHROME_BIN || '/app/.chrome-for-testing/chrome-linux64/chrome',
       args: commonArgs 
     }
   ];
