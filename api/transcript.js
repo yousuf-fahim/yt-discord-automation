@@ -28,7 +28,6 @@ function resolveChromeExecutablePath() {
 }
 
 async function launchBrowser() {
-  const executablePath = resolveChromeExecutablePath();
   const commonArgs = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -40,10 +39,13 @@ async function launchBrowser() {
     '--disable-features=IsolateOrigins,site-per-process'
   ];
 
-  // Try with system Chrome first (if present), then fallback to bundled
+  // On Heroku, use the installed Chrome from buildpack
   const attempts = [
-    { headless: true, executablePath, args: commonArgs },
-    { headless: true, args: commonArgs },
+    { 
+      headless: true, 
+      executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome',
+      args: commonArgs 
+    }
   ];
 
   let lastError;
