@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+echo "-----> Running post-compile hook"
+echo "-----> Installing yt-dlp using pip"
+pip install yt-dlp
+
+echo "-----> Post-compile hook completed"
