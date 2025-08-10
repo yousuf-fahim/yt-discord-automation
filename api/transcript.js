@@ -11,7 +11,10 @@ const execAsync = util.promisify(exec);
 
 // Create temp directory for yt-dlp cache
 const TEMP_DIR = path.join(process.cwd(), 'temp');
-fs.mkdir(TEMP_DIR, { recursive: true }).catch(() => {});
+console.log('Using temp directory:', TEMP_DIR);
+fs.mkdir(TEMP_DIR, { recursive: true })
+  .then(() => console.log('Successfully created temp directory'))
+  .catch((err) => console.error('Error creating temp directory:', err));
 
 // Helper function to verify video exists
 async function verifyVideoExists(videoId) {
@@ -42,11 +45,12 @@ async function getTranscriptWithYtDlp(videoId) {
     // Set up temp directory for this extraction
     const videoTempDir = path.join(TEMP_DIR, videoId);
     await fs.mkdir(videoTempDir, { recursive: true });
-    process.chdir(videoTempDir);
-
-    // First, try to get available subtitles
+    
+    // First, try to get available subtitles in the temp directory
     const { stdout: subsInfo } = await execAsync(`yt-dlp --cache-dir "${TEMP_DIR}" --list-subs "https://www.youtube.com/watch?v=${videoId}"`);
     console.log('Available subtitles:', subsInfo);
+    console.log('Current working directory:', process.cwd());
+    console.log('Video temp directory:', videoTempDir);
 
     // Try different methods to get transcript
     const methods = [
