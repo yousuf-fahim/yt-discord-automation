@@ -10,6 +10,7 @@
     "test:prod": "NODE_ENV=production node test-enhanced-transcript.js",
     "monitor": "node utils/monitoring.js stats",
     "clean-cache": "node api/manage-cache.js clean",
+    "heroku-prebuild": "npm install puppeteer && npx puppeteer browsers install chrome",
     "heroku-postbuild": "echo 'Skipping npm postbuild'"
   },
   "engines": {

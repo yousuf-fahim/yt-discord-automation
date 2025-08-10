@@ -1,0 +1,4 @@
+heroku/nodejs
+https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest.git
+https://github.com/jontewks/puppeteer-heroku-buildpack.git
+https://github.com/synicalsyntax/heroku-buildpack-yt-dlp.git

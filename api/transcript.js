@@ -119,6 +119,7 @@ async function getTranscriptDirectFromYouTube(videoId) {
       
       browser = await puppeteer.launch({
         headless: 'new',
+        executablePath: process.env.CHROME_BIN || '/app/.chrome-for-testing/chrome-linux64/chrome',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
