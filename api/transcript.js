@@ -59,7 +59,7 @@ async function getTranscript(videoId) {
             '--extractor-args',
             'youtube:player_client=android',
             '--user-agent',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+            '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"',
             `https://www.youtube.com/watch?v=${videoId}`
           ].join(' ');
           
