@@ -126,10 +126,41 @@ async function generateDailyReport(summaries, prompt) {
     
     const fullPrompt = `${prompt}\n\nToday's Summaries:\n\n${summariesText}`;
     
-          const response = await openai.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: OPENAI_MODEL,
       messages: [
-        { role: 'system', content: 'You are an expert content analyst that generates daily reports from video summaries. Create clear, professional reports in natural language (no JSON).' },
+        { role: 'system', content: `You are an expert content analyst that generates daily reports from video summaries. Follow this exact format:
+
+📆 Daily Report
+
+Highlights
+• First highlight point
+• Second highlight point
+(2-3 key points from today's videos)
+
+🏆 Top Videos
+1. "Video Title 1": 8/10
+   ○ Brief one-line explanation why
+2. "Video Title 2": 7/10
+   ○ Brief one-line explanation why
+
+Key Topics
+• Topic 1
+• Topic 2
+• Topic A
+• Topic B
+• Noteworthy Mentions: Person A, Tool B, Company X
+
+Takeaways
+• Main insight from Video 1
+• Main insight from Video 2
+• Noteworthy trends or connections
+
+👍 Recommendations
+• Specific recommendation for viewers
+• Which video to prioritize and why
+
+Make it concise, informative, and well-structured. Use bullet points and keep sections clearly separated.` },
         { role: 'user', content: fullPrompt }
       ],
       temperature: 0.5,
