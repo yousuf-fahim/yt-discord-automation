@@ -2,12 +2,18 @@ require('dotenv').config();
 const { OpenAI } = require('openai');
 
 // Initialize OpenAI client
+console.log('Initializing OpenAI client...');
+console.log('API Key present:', !!process.env.OPENAI_API_KEY);
+console.log('API Key length:', process.env.OPENAI_API_KEY?.length);
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+console.log('OpenAI client initialized');
+
 // Configuration
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4-turbo';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4-1106-preview';  // Using the correct model identifier
 const MAX_TOKENS = 16000; // Safe limit for most models
 
 /**
