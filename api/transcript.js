@@ -64,16 +64,18 @@ async function getTranscriptWithYtDlp(videoId) {
 
     for (const cmd of methods) {
       try {
-        // Execute yt-dlp command
-        await execAsync(cmd);
+        // Execute yt-dlp command in the temp directory
+        const { stdout, stderr } = await execAsync(cmd, { cwd: videoTempDir });
+        console.log(`yt-dlp output for method:`, stdout);
+        if (stderr) console.error(`yt-dlp stderr:`, stderr);
         
         // Look for generated subtitle files
-        const files = await fs.readdir('.');
+        const files = await fs.readdir(videoTempDir);
         const srtFiles = files.filter(f => f.includes(videoId) && f.endsWith('.srt'));
         
         if (srtFiles.length > 0) {
-          // Read the first found subtitle file
-          const srtContent = await fs.readFile(srtFiles[0], 'utf8');
+          // Read the first found subtitle file using absolute path
+          const srtContent = await fs.readFile(path.join(videoTempDir, srtFiles[0]), 'utf8');
           
           // Clean up the transcript
           const cleaned = `Video Title: ${videoId}\n\n` + srtContent
@@ -90,7 +92,7 @@ async function getTranscriptWithYtDlp(videoId) {
             
           // Clean up the generated files
           for (const file of srtFiles) {
-            await fs.unlink(file).catch(() => {});
+            await fs.unlink(path.join(videoTempDir, file)).catch(() => {});
           }
           
           // Clean up temp directory
