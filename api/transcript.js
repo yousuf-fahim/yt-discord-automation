@@ -73,10 +73,15 @@ async function getTranscriptWithYtDlp(videoId) {
           
           // Clean up the transcript
           const cleaned = srtContent
-            .replace(/\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n/g, '') // Remove SRT timestamps
+            // Remove SRT timestamps and numbers
+            .replace(/^\d+\n/gm, '') // Remove subtitle numbers
+            .replace(/\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n/g, '') // Remove SRT timestamps
+            .replace(/^(?:\d{1,2}:)?\d{1,2}:\d{2}\n/gm, '') // Remove any remaining timestamps
             .replace(/<.*?>/g, '')   // Remove HTML-like tags
             .replace(/\n+/g, ' ')    // Replace newlines with spaces
             .replace(/\s+/g, ' ')    // Normalize spaces
+            .replace(/\d{1,2}:\d{2}\s+/g, '') // Remove any remaining timestamp-like patterns
+            .replace(/(\w+(?:\s+\w+){0,7})\s+\1/g, '$1') // Remove repeated phrases
             .trim();
             
           // Clean up the generated files
@@ -201,13 +206,34 @@ async function getTranscriptDirectFromYouTube(videoId) {
           const text = await page.evaluate((sel) => {
             const element = document.querySelector(sel);
             if (!element) return null;
+
+            // Function to clean up text and remove timestamps
+            const cleanText = (text) => {
+              return text
+                .replace(/^\d+:\d{2}$/gm, '') // Remove MM:SS timestamps
+                .replace(/^\d{1,2}:\d{2}:\d{2}$/gm, '') // Remove HH:MM:SS timestamps
+                .replace(/^(?:\d{1,2}:)?\d{1,2}:\d{2}\s*/gm, '') // Remove leading timestamps
+                .replace(/\s+/g, ' ')
+                .replace(/(\w+(?:\s+\w+){0,7})\s+\1/g, '$1') // Remove repeated phrases
+                .trim();
+            };
+
             // Try different ways to get text
-            const directText = element.innerText;
-            const segmentText = Array.from(element.querySelectorAll('ytd-transcript-segment-renderer'))
-              .map(seg => seg.innerText).join(' ');
-            const timeText = Array.from(element.querySelectorAll('ytd-transcript-segment-timestamp-renderer'))
-              .map(seg => seg.innerText).join(' ');
-            return directText || segmentText || timeText;
+            const directText = cleanText(element.innerText);
+            
+            // Get text from transcript segments, excluding timestamp elements
+            const segments = Array.from(element.querySelectorAll('ytd-transcript-segment-renderer'));
+            const segmentText = segments
+              .map(seg => {
+                const textContent = Array.from(seg.childNodes)
+                  .filter(node => !node.matches?.('ytd-transcript-segment-timestamp-renderer'))
+                  .map(node => node.textContent)
+                  .join(' ');
+                return cleanText(textContent);
+              })
+              .join(' ');
+
+            return directText || segmentText;
           }, selector);
           
           if (text && text.length > 100) {
