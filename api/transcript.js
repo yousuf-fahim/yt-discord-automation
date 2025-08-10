@@ -72,7 +72,7 @@ async function getTranscriptWithYtDlp(videoId) {
           const srtContent = await fs.readFile(srtFiles[0], 'utf8');
           
           // Clean up the transcript
-          const cleaned = srtContent
+          const cleaned = `Video Title: ${videoId}\n\n` + srtContent
             // Remove SRT timestamps and numbers
             .replace(/^\d+\n/gm, '') // Remove subtitle numbers
             .replace(/\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n/g, '') // Remove SRT timestamps
@@ -209,7 +209,7 @@ async function getTranscriptDirectFromYouTube(videoId) {
 
             // Function to clean up text and remove timestamps
             const cleanText = (text) => {
-              return text
+              return `Video Title: ${videoId}\n\n` + text
                 .replace(/^\d+:\d{2}$/gm, '') // Remove MM:SS timestamps
                 .replace(/^\d{1,2}:\d{2}:\d{2}$/gm, '') // Remove HH:MM:SS timestamps
                 .replace(/^(?:\d{1,2}:)?\d{1,2}:\d{2}\s*/gm, '') // Remove leading timestamps

@@ -88,10 +88,21 @@ async function postToChannel(channel, content) {
     if (content.length <= MAX_LENGTH) {
       return await channel.send(content);
     } else {
-      // Split into multiple messages
+      // Split into multiple messages at word boundaries
       const parts = [];
-      for (let i = 0; i < content.length; i += MAX_LENGTH) {
-        parts.push(content.substring(i, i + MAX_LENGTH));
+      let currentPart = '';
+      const words = content.split(/\s+/);
+      
+      for (const word of words) {
+        if ((currentPart + ' ' + word).length <= MAX_LENGTH) {
+          currentPart += (currentPart ? ' ' : '') + word;
+        } else {
+          parts.push(currentPart);
+          currentPart = word;
+        }
+      }
+      if (currentPart) {
+        parts.push(currentPart);
       }
       
       // Send each part
