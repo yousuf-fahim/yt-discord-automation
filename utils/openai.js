@@ -81,7 +81,7 @@ async function generateSummary(transcript, prompt) {
       const finalResponse = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
-          { role: 'system', content: 'You are a helpful assistant that combines multiple summaries into one coherent summary.' },
+          { role: 'system', content: 'You are a helpful assistant that combines multiple summaries into one coherent JSON summary. Always return valid JSON following this format: {"title": string, "summary": string[], "noteworthy_mentions": string[], "verdict": string}' },
           { role: 'user', content: combinedSummaryPrompt }
         ],
         temperature: 0.5,
@@ -96,7 +96,7 @@ async function generateSummary(transcript, prompt) {
       const response = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
-          { role: 'system', content: 'You are a helpful assistant that summarizes YouTube video transcripts. Always return responses in valid JSON format when requested.' },
+          { role: 'system', content: 'You are a helpful assistant that summarizes YouTube video transcripts. Always return summaries in this JSON format: {"title": string, "summary": string[], "noteworthy_mentions": string[], "verdict": string}' },
           { role: 'user', content: fullPrompt }
         ],
         temperature: 0.5,
