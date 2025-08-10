@@ -1,7 +1,26 @@
 #!/usr/bin/env bash
 
 echo "-----> Running post-compile hook"
-echo "-----> Installing yt-dlp using pip"
-pip install yt-dlp
+echo "-----> Installing latest yt-dlp"
+
+# Remove any existing yt-dlp installation
+rm -f /app/.heroku/python/bin/yt-dlp
+
+# Install latest yt-dlp using pip
+pip install --upgrade pip
+pip install --upgrade yt-dlp
+
+# Create necessary directories
+mkdir -p /app/.cache
+mkdir -p /app/.config
+
+# Set permissions
+chmod -R 777 /app/.cache
+chmod -R 777 /app/.config
+
+# Verify installation
+yt-dlp --version
+
+echo "-----> Post-compile hook completed"
 
 echo "-----> Post-compile hook completed"

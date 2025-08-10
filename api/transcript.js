@@ -41,25 +41,61 @@ async function getTranscript(videoId) {
     
     // Helper function to verify video exists
     async function verifyVideoExists(videoId) {
-      try {
-        const { stdout, stderr } = await execAsync(`yt-dlp --no-download --get-title "https://www.youtube.com/watch?v=${videoId}" 2>&1`);
-        if (stderr && stderr.includes('Video unavailable')) {
-          console.log('Video is explicitly marked as unavailable');
-          return false;
+      const maxRetries = 3;
+      const retryDelay = 2000; // 2 seconds
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`Verifying video ${videoId} (attempt ${attempt}/${maxRetries})`);
+          
+          const cmd = [
+            'yt-dlp',
+            '--no-download',
+            '--get-title',
+            '--no-warnings',
+            '--ignore-config',
+            '--no-playlist',
+            '--no-cache-dir',
+            `https://www.youtube.com/watch?v=${videoId}`
+          ].join(' ');
+          
+          const { stdout, stderr } = await execAsync(cmd + ' 2>&1');
+          
+          if (stderr && stderr.includes('Video unavailable')) {
+            console.log('Video is explicitly marked as unavailable');
+            return false;
+          }
+          
+          if (stdout) {
+            console.log('Video title found:', stdout.trim());
+            return true;
+          }
+          
+          throw new Error('No output from yt-dlp');
+        } catch (error) {
+          const errorMsg = error.message || error;
+          console.log(`Attempt ${attempt} failed:`, errorMsg);
+          
+          if (errorMsg.includes('Video unavailable')) {
+            console.log('Video is explicitly marked as unavailable');
+            return false;
+          } else if (errorMsg.includes('Private video')) {
+            console.log('Video is private');
+            return false;
+          } else if (errorMsg.includes('This live event will begin in')) {
+            console.log('Video is an upcoming livestream');
+            return false;
+          }
+          
+          if (attempt < maxRetries) {
+            console.log(`Waiting ${retryDelay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          }
         }
-        return !!stdout;
-      } catch (error) {
-        if (error.message?.includes('Video unavailable')) {
-          console.log('Video is explicitly marked as unavailable');
-        } else if (error.message?.includes('Private video')) {
-          console.log('Video is private');
-        } else if (error.message?.includes('This live event will begin in')) {
-          console.log('Video is an upcoming livestream');
-        } else {
-          console.log('Video verification failed:', error.message || error);
-        }
-        return false;
       }
+      
+      console.log(`All ${maxRetries} verification attempts failed`);
+      return false;
     }
 
     // Check video type
