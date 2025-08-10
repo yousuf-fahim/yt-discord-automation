@@ -133,13 +133,17 @@ ${combinedSummaryPrompt}` }
       // For single-chunk transcripts, just summarize directly
       const fullPrompt = `${prompt}\n\nTranscript:\n\n${transcript}`;
       
+      // Extract video title from transcript
+      const titleMatch = transcript.match(/Title: (.*?)\n/);
+      const videoTitle = titleMatch ? titleMatch[1] : 'Unknown Title';
+      
       const response = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
-          { role: 'system', content: 'You\'re an advanced content summarizer. Your task is to analyze the transcript of a YouTube video and return a concise summary in JSON format only. Include the video\'s topic, key points, and any noteworthy mentions. Do not include anything outside of the JSON block. Be accurate, structured, and informative.' },
-          { role: 'user', content: `Format your response like this:
+          { role: 'system', content: 'You\'re an advanced content summarizer. Your task is to analyze the transcript of a YouTube video and return a concise summary in JSON format only. Include the video\'s topic, key points, and any noteworthy mentions. Do not include anything outside of the JSON block. Use the exact title from the transcript. Be accurate, structured, and informative.' },
+          { role: 'user', content: fullPrompt + `\n\nFormat your response like this, using the exact title from the transcript:
 {
-  "title": "Insert video title here",
+  "title": "${videoTitle}",
   "summary": [
     "Key point 1",
     "Key point 2",
