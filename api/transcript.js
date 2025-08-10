@@ -5,6 +5,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const puppeteer = require('puppeteer');
 const { getYouTubeUrl, isYouTubeShort, isYouTubeLive } = require('../utils/youtube');
+const { getYouTubeTitle } = require('../utils/youtube-title');
 const { saveTranscript, getTranscriptFromCache } = require('../utils/cache');
 
 const execAsync = util.promisify(exec);
@@ -108,17 +109,23 @@ async function getTranscriptWithYtDlp(videoId) {
           // Read the first found subtitle file using absolute path
           const srtContent = await fs.readFile(path.join(videoTempDir, srtFiles[0]), 'utf8');
           
+          // Get video title
+          const videoTitle = await getYouTubeTitle(videoId) || 'Unknown Title';
+          
           // Clean up the transcript
-          const cleaned = `Video Title: ${videoId}\n\n` + srtContent
+          const cleaned = `Title: ${videoTitle}\n\n` + srtContent
             // Remove SRT timestamps and numbers
-            .replace(/^\d+\n/gm, '') // Remove subtitle numbers
-            .replace(/\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n/g, '') // Remove SRT timestamps
-            .replace(/^(?:\d{1,2}:)?\d{1,2}:\d{2}\n/gm, '') // Remove any remaining timestamps
-            .replace(/<.*?>/g, '')   // Remove HTML-like tags
-            .replace(/\n+/g, ' ')    // Replace newlines with spaces
-            .replace(/\s+/g, ' ')    // Normalize spaces
-            .replace(/\d{1,2}:\d{2}\s+/g, '') // Remove any remaining timestamp-like patterns
-            .replace(/(\w+(?:\s+\w+){0,7})\s+\1/g, '$1') // Remove repeated phrases
+            // Clean up basic formatting
+            .replace(/^\d+\n/gm, '')  // Remove subtitle numbers
+            .replace(/\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n/g, '')  // Remove SRT timestamps
+            .replace(/^(?:\d{1,2}:)?\d{1,2}:\d{2}\n/gm, '')  // Remove any remaining timestamps
+            .replace(/<.*?>/g, '')    // Remove HTML-like tags
+            .replace(/\n+/g, ' ')     // Replace newlines with spaces
+            .replace(/\s+/g, ' ')     // Normalize spaces
+            .replace(/\d{1,2}:\d{2}\s+/g, '')  // Remove any remaining timestamp-like patterns
+            // Advanced deduplication
+            .replace(/(?:\b\w+(?:\s+\w+){1,10}\b)(?:\s+\1\b)+/g, '$1')  // Remove repeated word sequences
+            .replace(/(.{20,100}?)(?:\s+\1)+/g, '$1')  // Remove any repeated content chunks
             .trim();
             
           // Clean up the generated files
@@ -286,9 +293,14 @@ async function getTranscriptDirectFromYouTube(videoId) {
             const element = document.querySelector(sel);
             if (!element) return null;
 
+            // Get video title from page
+            const videoTitle = document.querySelector('meta[name="title"]')?.content || 
+                             document.title.replace(' - YouTube', '') || 
+                             'Unknown Title';
+            
             // Function to clean up text and remove timestamps
             const cleanText = (text) => {
-              return `Video Title: ${videoId}\n\n` + text
+              return `Title: ${videoTitle}\n\n` + text
                 .replace(/^\d+:\d{2}$/gm, '') // Remove MM:SS timestamps
                 .replace(/^\d{1,2}:\d{2}:\d{2}$/gm, '') // Remove HH:MM:SS timestamps
                 .replace(/^(?:\d{1,2}:)?\d{1,2}:\d{2}\s*/gm, '') // Remove leading timestamps
