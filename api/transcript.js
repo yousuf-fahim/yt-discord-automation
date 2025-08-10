@@ -126,13 +126,26 @@ async function getTranscriptDirectFromYouTube(videoId) {
           '--disable-dev-shm-usage',
           '--disable-accelerated-2d-canvas',
           '--disable-gpu',
-          '--window-size=1920,1080'
+          '--window-size=1920,1080',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process'
         ]
       });
       
       const page = await browser.newPage();
+      
+      // Set user agent to look more like a real browser
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36');
+      
+      // Remove webdriver flag
+      await page.evaluateOnNewDocument(() => {
+        delete Object.getPrototypeOf(navigator).webdriver;
+        window.chrome = { runtime: {} };
+      });
+      
       const url = getYouTubeUrl(videoId);
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
       
       const selectors = [
         'ytd-transcript-body-renderer',
