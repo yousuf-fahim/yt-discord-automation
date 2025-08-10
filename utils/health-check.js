@@ -56,7 +56,7 @@ class HealthCheck {
                 `${statusEmoji} **Bot Status Update**`,
                 `Uptime: ${uptime} minutes`,
                 '',
-                '**Today's Activity:**',
+                '**Todays Activity:**',
                 `• Summaries Generated: ${stats.summaries.count || 0}`,
                 `• Unique Videos Processed: ${stats.summaries.videos?.size || 0}`,
                 `• Transcript Success Rate: ${Math.round((stats.transcripts.successful / stats.transcripts.total) * 100 || 0)}%`,

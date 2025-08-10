@@ -9,6 +9,16 @@ const { saveTranscript, getTranscriptFromCache } = require('../utils/cache');
 
 const execAsync = util.promisify(exec);
 
+// Check yt-dlp installation
+console.log('Checking yt-dlp installation...');
+execAsync('which yt-dlp')
+  .then(({stdout}) => console.log('yt-dlp path:', stdout.trim()))
+  .catch(err => console.error('Error finding yt-dlp:', err));
+
+execAsync('yt-dlp --version')
+  .then(({stdout}) => console.log('yt-dlp version:', stdout.trim()))
+  .catch(err => console.error('Error getting yt-dlp version:', err));
+
 // Create temp directory for yt-dlp cache
 const TEMP_DIR = path.join(process.cwd(), 'temp');
 console.log('Using temp directory:', TEMP_DIR);
@@ -19,9 +29,22 @@ fs.mkdir(TEMP_DIR, { recursive: true })
 // Helper function to verify video exists
 async function verifyVideoExists(videoId) {
   try {
-    const { stdout } = await execAsync(`yt-dlp --no-download --get-title "https://www.youtube.com/watch?v=${videoId}"`);
+    const { stdout, stderr } = await execAsync(`yt-dlp --no-download --get-title "https://www.youtube.com/watch?v=${videoId}" 2>&1`);
+    if (stderr && stderr.includes('Video unavailable')) {
+      console.log('Video is explicitly marked as unavailable');
+      return false;
+    }
     return !!stdout;
   } catch (error) {
+    if (error.message?.includes('Video unavailable')) {
+      console.log('Video is explicitly marked as unavailable');
+    } else if (error.message?.includes('Private video')) {
+      console.log('Video is private');
+    } else if (error.message?.includes('This live event will begin in')) {
+      console.log('Video is an upcoming livestream');
+    } else {
+      console.log('Video verification failed:', error.message || error);
+    }
     return false;
   }
 }
@@ -36,11 +59,19 @@ const RETRY_DELAY = parseInt(process.env.TRANSCRIPT_RETRY_DELAY || '5000');
  */
 async function getTranscriptWithYtDlp(videoId) {
   try {
+    console.log(`Starting yt-dlp transcript extraction for video ${videoId}`);
+    console.log('Memory usage:', process.memoryUsage());
+    
     // Verify video exists first
     if (!await verifyVideoExists(videoId)) {
       console.log('Video is unavailable');
       return null;
     }
+    
+    // Log system information
+    console.log('Platform:', process.platform);
+    console.log('Architecture:', process.arch);
+    console.log('Node version:', process.version);
 
     // Set up temp directory for this extraction
     const videoTempDir = path.join(TEMP_DIR, videoId);
@@ -137,14 +168,56 @@ async function getTranscriptDirectFromYouTube(videoId) {
           '--disable-dev-shm-usage',
           '--disable-accelerated-2d-canvas',
           '--disable-gpu',
-          '--window-size=1920,1080',
-          '--disable-blink-features=AutomationControlled',
+          '--window-size=1280,720',
+          '--disable-software-rasterizer',
+          '--disable-default-apps',
+          '--disable-extensions',
+          '--disable-sync',
+          '--disable-background-networking',
+          '--memory-pressure-off',
+          '--js-flags=--max-old-space-size=256',
+          '--single-process',
+          '--disable-client-side-phishing-detection',
+          '--disable-features=site-per-process,TranslateUI,IsolateOrigins,AutomationControlled',
+          '--disable-remote-fonts',
           '--disable-web-security',
-          '--disable-features=IsolateOrigins,site-per-process'
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--deterministic-fetch',
+          '--disk-cache-size=0'
         ]
       });
       
       const page = await browser.newPage();
+      
+      // Set up error handling
+      page.on('error', err => {
+        console.error('Page error:', err);
+      });
+      
+      page.on('pageerror', err => {
+        console.error('Page error:', err);
+      });
+      
+      // Enable request interception to block unnecessary resources
+      await page.setRequestInterception(true);
+      
+      // Clean up event listeners on page close
+      const requestHandler = (req) => {
+        const resourceType = req.resourceType();
+        if (['image', 'stylesheet', 'font', 'media', 'other'].includes(resourceType)) {
+          req.abort().catch(err => console.error('Error aborting request:', err));
+        } else {
+          req.continue().catch(err => console.error('Error continuing request:', err));
+        }
+      };
+      
+      page.on('request', requestHandler);
+      
+      // Set up cleanup
+      page.once('close', () => {
+        page.removeListener('request', requestHandler);
+      });
       
       // Set user agent to look more like a real browser
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36');
@@ -257,12 +330,21 @@ async function getTranscriptDirectFromYouTube(videoId) {
       console.error(`Scraping attempt ${retryCount + 1} failed:`, error?.message || error);
       retryCount++;
     } finally {
-      if (browser) {
-        await browser.close();
+      try {
+        if (browser) {
+          // Force close all pages
+          const pages = await browser.pages();
+          await Promise.all(pages.map(page => page.close()));
+          await browser.close();
+        }
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
       }
     }
   }
   
+  // Log final attempt status
+  console.log(`All ${MAX_RETRIES} attempts failed for video ${videoId}`);
   return null;
 }
 
@@ -293,6 +375,21 @@ async function getTranscript(videoId) {
       }
     }
 
+    // Log environment info
+    console.log('Process working directory:', process.cwd());
+    console.log('Environment:', process.env.NODE_ENV);
+    console.log('Memory usage:', process.memoryUsage());
+    console.log('Node version:', process.version);
+    
+    // Verify yt-dlp installation and version
+    try {
+      const { stdout: version } = await execAsync('yt-dlp --version');
+      console.log('yt-dlp version:', version.trim());
+    } catch (e) {
+      console.error('Error getting yt-dlp version:', e);
+      // Don't fail completely, try to continue
+    }
+    
     // Try yt-dlp first
     console.log('Attempting yt-dlp extraction...');
     const ytDlpTranscript = await getTranscriptWithYtDlp(videoId);

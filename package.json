@@ -13,9 +13,6 @@
     "heroku-prebuild": "npm install puppeteer && npx puppeteer browsers install chrome",
     "heroku-postbuild": "echo 'Skipping npm postbuild'"
   },
-  "engines": {
-    "node": "18.x"
-  },
   "keywords": [
     "discord",
     "youtube",
