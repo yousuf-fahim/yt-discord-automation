@@ -138,14 +138,35 @@ async function getTranscriptDirectFromYouTube(videoId) {
       // Set user agent to look more like a real browser
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36');
       
-      // Remove webdriver flag
+      // Remove webdriver flag and add stealth features
       await page.evaluateOnNewDocument(() => {
         delete Object.getPrototypeOf(navigator).webdriver;
-        window.chrome = { runtime: {} };
+        window.chrome = {
+          runtime: {},
+          loadTimes: () => {},
+          csi: () => {},
+          app: {},
+          webstore: {},
+        };
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5],
+        });
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en'],
+        });
+      });
+      
+      // Set extra headers
+      await page.setExtraHTTPHeaders({
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.youtube.com/',
       });
       
       const url = getYouTubeUrl(videoId);
-      await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+      await page.goto(url, { 
+        waitUntil: 'networkidle0', 
+        timeout: 60000 // Increase timeout
+      });
       
       const selectors = [
         'ytd-transcript-body-renderer',
@@ -153,15 +174,48 @@ async function getTranscriptDirectFromYouTube(videoId) {
         '#segments-container'
       ];
 
+      // Wait for JavaScript to load
+      await page.waitForFunction(() => typeof window.ytInitialPlayerResponse !== 'undefined', { timeout: 10000 });
+      
+      // Click the transcript button if it exists
+      try {
+        // Look for and click the "Show transcript" button
+        await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const transcriptButton = buttons.find(button => button.innerText.includes('Show transcript'));
+          if (transcriptButton) {
+            transcriptButton.click();
+          }
+        });
+        
+        // Give time for transcript to load
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (error) {
+        console.log('Could not find/click transcript button:', error?.message);
+      }
+      
       for (const selector of selectors) {
         try {
-          await page.waitForSelector(selector, { timeout: 5000 });
-          const text = await page.$eval(selector, el => el.innerText);
+          await page.waitForSelector(selector, { timeout: 10000 });
+          // Try to extract text in various ways
+          const text = await page.evaluate((sel) => {
+            const element = document.querySelector(sel);
+            if (!element) return null;
+            // Try different ways to get text
+            const directText = element.innerText;
+            const segmentText = Array.from(element.querySelectorAll('ytd-transcript-segment-renderer'))
+              .map(seg => seg.innerText).join(' ');
+            const timeText = Array.from(element.querySelectorAll('ytd-transcript-segment-timestamp-renderer'))
+              .map(seg => seg.innerText).join(' ');
+            return directText || segmentText || timeText;
+          }, selector);
+          
           if (text && text.length > 100) {
             console.log(`Successfully extracted transcript via scraping (${text.length} chars)`);
             return text;
           }
         } catch (error) {
+          console.log(`Selector ${selector} failed:`, error?.message);
           continue;
         }
       }
