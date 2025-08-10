@@ -42,6 +42,15 @@ function getVideoTitle(summary) {
  */
 async function generateSummaries(client, videoId, transcript, originalUrl) {
   try {
+    // Get current date for tracking
+    const today = new Date().toISOString().split('T')[0];
+    global.summaryStats = global.summaryStats || {};
+    global.summaryStats[today] = global.summaryStats[today] || {
+      count: 0,
+      videos: new Set(),
+      lastUpdate: new Date()
+    };
+
     // Get all prompt channels
     const promptChannels = await getChannelsByPrefix(client, SUMMARY_PROMPT_PREFIX);
     
@@ -223,6 +232,17 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
         
         // Cache the summary
         await saveSummary(videoId, promptIndex, summary);
+        
+        // Update summary statistics
+        const today = new Date().toISOString().split('T')[0];
+        global.summaryStats[today].count++;
+        global.summaryStats[today].videos.add(videoId);
+        global.summaryStats[today].lastUpdate = new Date();
+        
+        // Update the summariesCollected count in report.js
+        if (typeof summariesCollected !== 'undefined') {
+          summariesCollected = global.summaryStats[today].count;
+        }
         
         // Parse JSON summary into a readable Discord format
         let videoTitle = null;

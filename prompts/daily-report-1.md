@@ -9,3 +9,4 @@ Given a list of video summaries from the last 24 hours, your job is to:
 Make it easy to read, concise, and useful. Avoid technical jargon.
 Output the report as plain text suitable for sharing in a Discord channel.
 
+

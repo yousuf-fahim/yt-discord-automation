@@ -5,9 +5,15 @@
   "main": "api/listener.js",
   "scripts": {
     "start": "node api/listener.js",
-    "dev": "nodemon api/listener.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "NODE_ENV=development nodemon api/listener.js",
+    "test": "node test-enhanced-transcript.js",
+    "test:prod": "NODE_ENV=production node test-enhanced-transcript.js",
+    "monitor": "node utils/monitoring.js stats",
+    "clean-cache": "node api/manage-cache.js clean",
     "heroku-postbuild": "echo 'Skipping npm postbuild'"
+  },
+  "engines": {
+    "node": "18.x"
   },
   "keywords": [
     "discord",
@@ -24,6 +30,8 @@
     "node-cron": "^3.0.2",
     "openai": "^4.10.0",
     "puppeteer": "^24.16.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {

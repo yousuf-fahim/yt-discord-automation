@@ -1,27 +1,15 @@
 require('dotenv').config();
-const { exec } = require('child_process');
-const util = require('util');
-const fs = require('fs').promises;
-const path = require('path');
 const puppeteer = require('puppeteer');
 const { getYouTubeUrl, isYouTubeShort, isYouTubeLive } = require('../utils/youtube');
 const { saveTranscript, getTranscriptFromCache } = require('../utils/cache');
-
+const { exec } = require('child_process');
+const util = require('util');
 const execAsync = util.promisify(exec);
 
-// Create temp directory for yt-dlp cache
-const TEMP_DIR = path.join(process.cwd(), 'temp');
-fs.mkdir(TEMP_DIR, { recursive: true }).catch(() => {});
-
-// Helper function to verify video exists
-async function verifyVideoExists(videoId) {
-  try {
-    const { stdout } = await execAsync(`yt-dlp --no-download --get-title "https://www.youtube.com/watch?v=${videoId}"`);
-    return !!stdout;
-  } catch (error) {
-    return false;
-  }
-}
+// Configuration
+const CACHE_TRANSCRIPTS = process.env.CACHE_TRANSCRIPTS === 'true';
+const MAX_RETRIES = parseInt(process.env.MAX_TRANSCRIPT_RETRIES || '3');
+const RETRY_DELAY = parseInt(process.env.TRANSCRIPT_RETRY_DELAY || '5000');
 
 // Configuration
 const CACHE_TRANSCRIPTS = process.env.CACHE_TRANSCRIPTS === 'true';
@@ -29,63 +17,62 @@ const MAX_RETRIES = parseInt(process.env.MAX_TRANSCRIPT_RETRIES || '3');
 const RETRY_DELAY = parseInt(process.env.TRANSCRIPT_RETRY_DELAY || '5000');
 
 /**
+ * Launch browser with appropriate configuration
+ */
+async function launchBrowser() {
+  const commonArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--disable-gpu',
+    '--window-size=1920,1080',
+    '--disable-web-security'
+  ];
+
+  const opts = {
+    headless: 'new',
+    args: commonArgs,
+    defaultViewport: { width: 1920, height: 1080 }
+  };
+
+  if (process.env.NODE_ENV === 'production' && process.env.CHROME_BIN) {
+    opts.executablePath = process.env.CHROME_BIN;
+  }
+
+  return await puppeteer.launch(opts);
+}
+
+/**
  * Extract transcript using yt-dlp
  */
 async function getTranscriptWithYtDlp(videoId) {
   try {
-    // Verify video exists first
-    if (!await verifyVideoExists(videoId)) {
-      console.log('Video is unavailable');
-      return null;
-    }
-
-    // Set up temp directory for this extraction
-    const videoTempDir = path.join(TEMP_DIR, videoId);
-    await fs.mkdir(videoTempDir, { recursive: true });
-    process.chdir(videoTempDir);
-
     // First, try to get available subtitles
-    const { stdout: subsInfo } = await execAsync(`yt-dlp --cache-dir "${TEMP_DIR}" --list-subs "https://www.youtube.com/watch?v=${videoId}"`);
+    const { stdout: subsInfo } = await execAsync(`yt-dlp --list-subs https://www.youtube.com/watch?v=${videoId}`);
     console.log('Available subtitles:', subsInfo);
 
     // Try different methods to get transcript
     const methods = [
-      // Method 1: Try manual subtitles in English
-      `yt-dlp --cache-dir "${TEMP_DIR}" --sub-lang en --write-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
-      // Method 2: Try auto-generated subtitles in English
-      `yt-dlp --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
-      // Method 3: Try original language subtitles
-      `yt-dlp --cache-dir "${TEMP_DIR}" --write-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`
+      // Method 1: Try auto-generated subtitles
+      `yt-dlp --get-auto-subs --sub-lang en --skip-download https://www.youtube.com/watch?v=${videoId}`,
+      // Method 2: Try manual subtitles
+      `yt-dlp --write-sub --sub-lang en --skip-download https://www.youtube.com/watch?v=${videoId}`,
+      // Method 3: Try auto-generated subtitles in any language
+      `yt-dlp --get-auto-subs --skip-download https://www.youtube.com/watch?v=${videoId}`,
     ];
 
     for (const cmd of methods) {
       try {
-        // Execute yt-dlp command
-        await execAsync(cmd);
-        
-        // Look for generated subtitle files
-        const files = await fs.readdir('.');
-        const srtFiles = files.filter(f => f.includes(videoId) && f.endsWith('.srt'));
-        
-        if (srtFiles.length > 0) {
-          // Read the first found subtitle file
-          const srtContent = await fs.readFile(srtFiles[0], 'utf8');
-          
-          // Clean up the transcript
-          const cleaned = srtContent
-            .replace(/\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n/g, '') // Remove SRT timestamps
+        const { stdout } = await execAsync(cmd);
+        if (stdout && stdout.length > 100) {
+          // Clean up the transcript (remove timestamps and formatting)
+          const cleaned = stdout
+            .replace(/\[.*?\]/g, '') // Remove timestamps
             .replace(/<.*?>/g, '')   // Remove HTML-like tags
             .replace(/\n+/g, ' ')    // Replace newlines with spaces
             .replace(/\s+/g, ' ')    // Normalize spaces
             .trim();
-            
-          // Clean up the generated files
-          for (const file of srtFiles) {
-            await fs.unlink(file).catch(() => {});
-          }
-          
-          // Clean up temp directory
-          await fs.rm(videoTempDir, { recursive: true, force: true }).catch(() => {});
 
           if (cleaned.length > 100) {
             console.log(`Successfully extracted transcript via yt-dlp (${cleaned.length} chars)`);
@@ -103,6 +90,63 @@ async function getTranscriptWithYtDlp(videoId) {
     return null;
   }
 }
+    
+    for (const options of languageOptions) {
+    try {
+      const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, options);
+      
+      if (!Array.isArray(transcriptItems) || transcriptItems.length === 0) {
+        continue;
+      }
+
+      const sentences = [];
+      let currentSentence = '';
+      
+      for (const item of transcriptItems) {
+        const text = item.text.trim();
+        if (!text) continue;
+        
+        if (text.endsWith('.') || text.endsWith('!') || text.endsWith('?')) {
+          currentSentence += (currentSentence ? ' ' : '') + text;
+          sentences.push(currentSentence);
+          currentSentence = '';
+        } else {
+          currentSentence += (currentSentence ? ' ' : '') + text;
+        }
+      }
+      
+      if (currentSentence) {
+        sentences.push(currentSentence);
+      }
+      
+      const transcript = sentences.join('. ').replace(/\.\./g, '.');
+      if (transcript.length > 100) {
+        console.log(`Successfully extracted transcript via API (${transcript.length} chars)`);
+        return transcript;
+      }
+    } catch (error) {
+      const msg = error?.message || error;
+      console.log(`API attempt failed:`, msg);
+      
+      // Extract available language info from error message
+      if (typeof msg === 'string' && msg.includes('Available languages:')) {
+        languageError = msg;
+        const langs = msg.split('Available languages:')[1].trim().split(',').map(l => l.trim());
+        for (const lang of langs) {
+          if (!languageOptions.some(opt => opt?.lang === lang)) {
+            languageOptions.push({ lang });
+          }
+        }
+        continue; // Try with the new language option
+      }
+    }
+  }
+  
+  if (languageError) {
+    console.log('Attempted all available languages without success');
+  }
+  return null;
+}
 
 /**
  * Extract transcript by scraping YouTube page
@@ -117,19 +161,9 @@ async function getTranscriptDirectFromYouTube(videoId) {
         await new Promise(r => setTimeout(r, RETRY_DELAY * Math.pow(2, retryCount - 1))); // Exponential backoff
       }
       
-      browser = await puppeteer.launch({
-        headless: 'new',
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--window-size=1920,1080'
-        ]
-      });
-      
+      browser = await launchBrowser();
       const page = await browser.newPage();
+      
       const url = getYouTubeUrl(videoId);
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       

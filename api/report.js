@@ -43,8 +43,11 @@ function setupDailyReport(client) {
   console.log(`Setting up daily report scheduler with cron: ${cronExpression}`);
   console.log(`This will run at ${DAILY_REPORT_HOUR}:${DAILY_REPORT_MINUTE.toString().padStart(2, '0')} CEST`);
   
-  // Schedule health check (runs every hour to prevent dyno sleeping)
-  cron.schedule('0 * * * *', async () => {
+  // Schedule health check (runs every 6 hours and after report generation)
+  let lastStatusMessage = null;
+  let summariesCollected = 0;
+
+  cron.schedule('0 */6 * * *', async () => {
     try {
       const channel = await getChannelByName(client, DAILY_REPORT_CHANNEL);
       if (channel) {
@@ -52,19 +55,33 @@ function setupDailyReport(client) {
         nextRun.setHours(DAILY_REPORT_HOUR, DAILY_REPORT_MINUTE, 0, 0);
         if (nextRun < new Date()) nextRun.setDate(nextRun.getDate() + 1);
         
-        await channel.send({
-          content: `🟢 Daily report bot is running\nNext report scheduled for: ${nextRun.toLocaleString('en-US', {
-            timeZone: 'Europe/Paris',
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZoneName: 'short'
-          })}`,
+        // Delete previous status message if it exists
+        if (lastStatusMessage) {
+          try {
+            await lastStatusMessage.delete();
+          } catch (error) {
+            console.log('Could not delete previous status message:', error.message);
+          }
+        }
+        
+        // Send new status message
+        const statusMessage = await channel.send({
+          content: `🟢 Daily report bot status update\n` +
+                  `Summaries collected today: ${summariesCollected}\n` +
+                  `Next report scheduled for: ${nextRun.toLocaleString('en-US', {
+                    timeZone: 'Europe/Paris',
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZoneName: 'short'
+                  })}`,
           flags: ['SuppressNotifications']
         });
+        
+        lastStatusMessage = statusMessage;
       }
     } catch (error) {
       console.error('Error sending health check message:', error);
@@ -121,15 +138,39 @@ async function generateDailyReports(client) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
+    // Log statistics for verification
+    const todayStr = today.toISOString().split('T')[0];
+    const stats = global.summaryStats?.[todayStr] || { count: 0, videos: new Set(), lastUpdate: null };
+    
+    console.log('=== Daily Report Statistics ===');
+    console.log(`Date: ${todayStr}`);
+    console.log(`Summaries tracked: ${stats.count}`);
+    console.log(`Unique videos: ${stats.videos.size}`);
+    console.log(`Last summary update: ${stats.lastUpdate}`);
+    
     // Get all summaries from today
     const summaries = await getSummariesByDate(today);
     
     if (summaries.length === 0) {
       console.log('No summaries found for today, skipping daily report');
+      
+      // Send notification about no summaries
+      const channel = await getChannelByName(client, DAILY_REPORT_CHANNEL);
+      if (channel) {
+        await channel.send({
+          content: `ℹ️ No summaries were generated today (${todayStr})`,
+          flags: ['SuppressNotifications']
+        });
+      }
       return;
     }
     
     console.log(`Found ${summaries.length} summaries for today`);
+    
+    // Verify summary count matches our tracking
+    if (stats.count > 0 && summaries.length !== stats.count) {
+      console.warn(`Warning: Tracked summary count (${stats.count}) differs from actual summaries found (${summaries.length})`);
+    }
     
     // Get all report prompt channels
     const promptChannels = await getChannelsByPrefix(client, DAILY_REPORT_PROMPT_PREFIX);

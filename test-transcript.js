@@ -27,8 +27,9 @@ This would normally be the actual transcript from YouTube.`;
 }
 
 async function testTranscriptExtraction() {
-  // Test video ID from user request
-  const videoId = '0jk1zGhHb-g'; // User requested video
+  // Get video ID from command line argument or use default
+  const urlOrId = process.argv[2] || '0jk1zGhHb-g';
+  const videoId = urlOrId.includes('watch?v=') ? urlOrId.split('watch?v=')[1].split('&')[0] : urlOrId;
   
   try {
     console.log('Testing transcript extraction with real function:');
