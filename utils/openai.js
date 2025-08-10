@@ -62,8 +62,25 @@ async function generateSummary(transcript, prompt) {
         const response = await openai.chat.completions.create({
           model: OPENAI_MODEL,
           messages: [
-            { role: 'system', content: 'You are a helpful assistant that summarizes YouTube video transcripts.' },
-            { role: 'user', content: chunkPrompt }
+            { role: 'system', content: 'You\'re an advanced content summarizer. Your task is to analyze the transcript of a YouTube video and return a concise summary in JSON format only. Include the video\'s topic, key points, and any noteworthy mentions. Do not include anything outside of the JSON block. Be accurate, structured, and informative.' },
+            { role: 'user', content: `Format your response like this:
+{
+  "title": "Insert video title here",
+  "summary": [
+    "Key point 1",
+    "Key point 2",
+    "Key point 3"
+  ],
+  "noteworthy_mentions": [
+    "Person, project, or tool name if mentioned",
+    "Important reference or example"
+  ],
+  "verdict": "Brief 1-line overall takeaway"
+}
+
+Here's the transcript to analyze:
+
+${chunkPrompt}` }
           ],
           temperature: 0.5,
           max_tokens: 1000
@@ -87,8 +104,25 @@ async function generateSummary(transcript, prompt) {
       const finalResponse = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
-          { role: 'system', content: 'You are a helpful assistant that combines multiple summaries into one coherent JSON summary. Always return valid JSON following this format: {"title": string, "summary": string[], "noteworthy_mentions": string[], "verdict": string}' },
-          { role: 'user', content: combinedSummaryPrompt }
+          { role: 'system', content: 'You\'re an advanced content summarizer. Your task is to combine multiple transcript summaries into a single coherent JSON summary. Be accurate, structured, and informative.' },
+          { role: 'user', content: `Format your response like this:
+{
+  "title": "Insert video title here",
+  "summary": [
+    "Key point 1",
+    "Key point 2",
+    "Key point 3"
+  ],
+  "noteworthy_mentions": [
+    "Person, project, or tool name if mentioned",
+    "Important reference or example"
+  ],
+  "verdict": "Brief 1-line overall takeaway"
+}
+
+Here are the summaries to combine:
+
+${combinedSummaryPrompt}` }
         ],
         temperature: 0.5,
         max_tokens: 1000
@@ -102,8 +136,25 @@ async function generateSummary(transcript, prompt) {
       const response = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
-          { role: 'system', content: 'You are a helpful assistant that summarizes YouTube video transcripts. Always return summaries in this JSON format: {"title": string, "summary": string[], "noteworthy_mentions": string[], "verdict": string}' },
-          { role: 'user', content: fullPrompt }
+          { role: 'system', content: 'You\'re an advanced content summarizer. Your task is to analyze the transcript of a YouTube video and return a concise summary in JSON format only. Include the video\'s topic, key points, and any noteworthy mentions. Do not include anything outside of the JSON block. Be accurate, structured, and informative.' },
+          { role: 'user', content: `Format your response like this:
+{
+  "title": "Insert video title here",
+  "summary": [
+    "Key point 1",
+    "Key point 2",
+    "Key point 3"
+  ],
+  "noteworthy_mentions": [
+    "Person, project, or tool name if mentioned",
+    "Important reference or example"
+  ],
+  "verdict": "Brief 1-line overall takeaway"
+}
+
+Here's the transcript to analyze:
+
+${fullPrompt}` }
         ],
         temperature: 0.5,
         max_tokens: 1000
