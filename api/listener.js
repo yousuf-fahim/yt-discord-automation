@@ -132,11 +132,23 @@ client.on('messageCreate', async (message) => {
         // Generate and post summaries
         await message.react('✅');
         await message.react('🤖');
-        await generateSummaries(client, videoId, transcript, content);
         
-        // Final confirmation
-        await message.reactions.cache.get('🤖').remove();
-        await message.react('📝');
+        try {
+          await generateSummaries(client, videoId, transcript, content);
+          // Final confirmation
+          await message.reactions.cache.get('🤖')?.remove().catch(err => console.error('Error removing reaction:', err));
+          await message.react('📝');
+        } catch (summaryError) {
+          console.error('Error generating summaries:', summaryError);
+          await message.reactions.cache.get('🤖')?.remove().catch(() => {});
+          await message.react('⚠️');
+          
+          // Send error message back to the channel
+          await message.reply({
+            content: `⚠️ Failed to generate summary for this video. Error: ${summaryError.message || 'Unknown error'}`,
+            flags: ['SuppressNotifications']
+          }).catch(err => console.error('Error sending error message:', err));
+        }
       } catch (error) {
         console.error('Error processing YouTube link:', error);
         await message.react('❌');

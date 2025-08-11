@@ -208,6 +208,7 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
         // Generate the summary
         let summary;
         try {
+          console.log(`Calling OpenAI API for video ${videoId} with prompt from ${promptChannel.name}...`);
           summary = await generateSummary(transcript, prompt);
           
           if (!summary) {
@@ -218,10 +219,24 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
             });
             continue;
           }
+          
+          console.log(`Summary generated successfully. Length: ${summary.length}`);
+          // Log the first 100 chars to help with debugging
+          console.log(`Summary preview: ${summary.substring(0, 100)}...`);
         } catch (summaryError) {
           console.error(`Error generating summary for video ${videoId}:`, summaryError);
+          
+          // More detailed error logging
+          if (summaryError.response) {
+            console.error('OpenAI API response error:', {
+              status: summaryError.response.status,
+              statusText: summaryError.response.statusText,
+              data: summaryError.response.data
+            });
+          }
+          
           await outputChannel.send({
-            content: `❌ Error generating summary for video: ${originalUrl || getYouTubeUrl(videoId)}\nError: ${summaryError.message}`,
+            content: `❌ Error generating summary for video: ${originalUrl || getYouTubeUrl(videoId)}\nError: ${summaryError.message || 'API Error'}\nCheck server logs for details.`,
             flags: ['SuppressNotifications']
           });
           continue;

@@ -6,14 +6,33 @@ console.log('Initializing OpenAI client...');
 console.log('API Key present:', !!process.env.OPENAI_API_KEY);
 console.log('API Key length:', process.env.OPENAI_API_KEY?.length);
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Validate API key format
+if (!process.env.OPENAI_API_KEY) {
+  console.error('❌ ERROR: OPENAI_API_KEY is not set in environment variables');
+}
 
-console.log('OpenAI client initialized');
+let openai;
+try {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+  console.log('OpenAI client initialized');
+} catch (error) {
+  console.error('❌ ERROR initializing OpenAI client:', error.message);
+  // Create a dummy client that will log errors
+  openai = {
+    chat: {
+      completions: {
+        create: async () => {
+          throw new Error('OpenAI client failed to initialize. Check your API key.');
+        }
+      }
+    }
+  };
+}
 
 // Configuration
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4-1106-preview';  // Using the correct model identifier
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';  // Update to the more stable gpt-4o model
 const MAX_TOKENS = 16000; // Safe limit for most models
 
 /**
@@ -167,8 +186,24 @@ ${fullPrompt}` }
       return response.choices[0].message.content;
     }
   } catch (error) {
-    console.error('Error generating summary with OpenAI:', error);
-    return null;
+    console.error('❌ Error generating summary with OpenAI:', error);
+    
+    // More detailed error logging
+    if (error.response) {
+      console.error('OpenAI API error status:', error.response.status);
+      console.error('OpenAI API error data:', error.response.data);
+      console.error('OpenAI API error headers:', error.response.headers);
+    } else {
+      console.error('Error message:', error.message);
+    }
+    
+    // Return a formatted error message
+    return JSON.stringify({
+      title: "Error Generating Summary",
+      summary: ["Failed to generate summary due to an API error."],
+      noteworthy_mentions: ["Error type: " + (error.type || "Unknown")],
+      verdict: "Summary generation failed. Please check server logs for details."
+    });
   }
 }
 
