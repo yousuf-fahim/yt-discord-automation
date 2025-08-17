@@ -168,11 +168,12 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
         // Use video title if available, or a default title with video ID
         const displayTitle = videoTitle || `YouTube Video (${videoId})`;
         
+        // Use video title for transcript file name
+        const transcriptFileName = videoTitle ? `${videoTitle.replace(/[^a-zA-Z0-9-_\.]/g, '_')}_transcript.txt` : `${videoId}_transcript.txt`;
         await transcriptsChannel.send({
-          content: `📝 **TRANSCRIPT: ${displayTitle}**\n\n`,
           files: [{
             attachment: transcriptBuffer,
-            name: `${videoId}_transcript.txt`
+            name: transcriptFileName
           }]
         });
       }
@@ -184,11 +185,13 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
         console.log(`Processing prompt channel: ${promptChannel.name}`);
         
         // Get the pinned prompt
-        const prompt = await getPinnedMessage(promptChannel);
+        let prompt = await getPinnedMessage(promptChannel);
         if (!prompt) {
           console.warn(`No pinned prompt found in channel ${promptChannel.name}`);
           continue;
         }
+        // Enforce strict prompt format for OpenAI
+        prompt = `You’re an advanced content summarizer.\nYour task is to analyze the transcript of a YouTube video and return a concise summary in JSON format only.\nInclude the video’s topic, key points, and any noteworthy mentions.\nDo not include anything outside of the JSON block. Be accurate, structured, and informative.\n\nFormat your response like this:\n\n{\n  "title": "Insert video title here",\n  "summary": [\n    "Key point 1",\n    "Key point 2",\n    "Key point 3"\n  ],\n  "noteworthy_mentions": [\n    "Person, project, or tool name if mentioned",\n    "Important reference or example"\n  ],\n  "verdict": "Brief 1-line overall takeaway"\n}`;
         
         // Find the corresponding output channel
         const outputChannel = await findCorrespondingOutputChannel(
