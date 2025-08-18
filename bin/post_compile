@@ -3,24 +3,44 @@
 echo "-----> Running post-compile hook"
 echo "-----> Installing latest yt-dlp"
 
+# Set PATH to include Python bin directory
+export PATH="/app/.heroku/python/bin:$PATH"
+
 # Remove any existing yt-dlp installation
 rm -f /app/.heroku/python/bin/yt-dlp
 
 # Install latest yt-dlp using pip
-pip install --upgrade pip
-pip install --upgrade yt-dlp
+python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade yt-dlp
+
+# Also try installing with specific user flag for Heroku
+pip3 install --user --upgrade yt-dlp
 
 # Create necessary directories
 mkdir -p /app/.cache
 mkdir -p /app/.config
+mkdir -p /app/temp
 
 # Set permissions
 chmod -R 777 /app/.cache
 chmod -R 777 /app/.config
+chmod -R 777 /app/temp
+
+# Create symlink if yt-dlp is in user directory
+if [ -f ~/.local/bin/yt-dlp ]; then
+    ln -sf ~/.local/bin/yt-dlp /app/.heroku/python/bin/yt-dlp
+fi
+
+# Make sure yt-dlp is executable
+chmod +x /app/.heroku/python/bin/yt-dlp 2>/dev/null || true
+
+# Try multiple paths to find and verify yt-dlp
+echo "Searching for yt-dlp..."
+which yt-dlp || echo "yt-dlp not found in PATH"
+find /app -name "yt-dlp" -type f 2>/dev/null || echo "No yt-dlp files found"
+ls -la ~/.local/bin/yt-dlp 2>/dev/null || echo "No yt-dlp in user local bin"
 
 # Verify installation
-yt-dlp --version
-
-echo "-----> Post-compile hook completed"
+yt-dlp --version || python3 -m yt_dlp --version || echo "yt-dlp verification failed"
 
 echo "-----> Post-compile hook completed"

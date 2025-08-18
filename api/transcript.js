@@ -10,15 +10,59 @@ const { saveTranscript, getTranscriptFromCache } = require('../utils/cache');
 
 const execAsync = util.promisify(exec);
 
-// Check yt-dlp installation
+// Check yt-dlp installation with multiple fallback methods
 console.log('Checking yt-dlp installation...');
-execAsync('which yt-dlp')
-  .then(({stdout}) => console.log('yt-dlp path:', stdout.trim()))
-  .catch(err => console.error('Error finding yt-dlp:', err));
 
-execAsync('yt-dlp --version')
-  .then(({stdout}) => console.log('yt-dlp version:', stdout.trim()))
-  .catch(err => console.error('Error getting yt-dlp version:', err));
+async function findYtDlp() {
+  const possiblePaths = [
+    'yt-dlp',
+    '/app/.heroku/python/bin/yt-dlp',
+    '~/.local/bin/yt-dlp',
+    'python3 -m yt_dlp'
+  ];
+  
+  for (const ytdlpPath of possiblePaths) {
+    try {
+      const { stdout } = await execAsync(`${ytdlpPath} --version`);
+      console.log(`yt-dlp found at: ${ytdlpPath}, version: ${stdout.trim()}`);
+      return ytdlpPath;
+    } catch (err) {
+      console.log(`Failed to find yt-dlp at: ${ytdlpPath}`);
+    }
+  }
+  
+  console.error('❌ yt-dlp not found in any expected location');
+  return null;
+}
+
+// Global variable to store the working yt-dlp command
+let YT_DLP_CMD = null;
+
+// Initialize yt-dlp detection
+findYtDlp().then(cmd => {
+  YT_DLP_CMD = cmd;
+  if (cmd) {
+    console.log(`✅ Using yt-dlp command: ${cmd}`);
+  } else {
+    console.error('❌ Warning: yt-dlp not found during initialization');
+  }
+}).catch(err => {
+  console.error('❌ Error during yt-dlp detection:', err);
+});
+
+// Function to wait for yt-dlp detection to complete
+async function waitForYtDlp(maxWaitMs = 10000) {
+  const startTime = Date.now();
+  while (YT_DLP_CMD === null && (Date.now() - startTime) < maxWaitMs) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  if (YT_DLP_CMD === null) {
+    console.warn('⚠️ yt-dlp detection timed out, will try fallback methods');
+  }
+  
+  return YT_DLP_CMD;
+}
 
 // Create temp directory for yt-dlp cache
 const TEMP_DIR = path.join(process.cwd(), 'temp');
@@ -37,6 +81,9 @@ const RETRY_DELAY = parseInt(process.env.TRANSCRIPT_RETRY_DELAY || '5000');
  */
 async function getTranscript(videoId) {
   try {
+    // Wait for yt-dlp detection to complete
+    await waitForYtDlp();
+    
     const url = getYouTubeUrl(videoId);
     
     // Helper function to verify video exists
@@ -48,8 +95,9 @@ async function getTranscript(videoId) {
         try {
           console.log(`Verifying video ${videoId} (attempt ${attempt}/${maxRetries})`);
           
+          const ytdlpCmd = YT_DLP_CMD || 'yt-dlp';
           const cmd = [
-            'yt-dlp',
+            ytdlpCmd,
             '--no-download',
             '--get-title',
             '--verbose',
@@ -138,8 +186,11 @@ async function getTranscript(videoId) {
     const videoTempDir = path.join(TEMP_DIR, videoId);
     await fs.mkdir(videoTempDir, { recursive: true });
     
+    // Get the yt-dlp command to use
+    const ytdlpCmd = YT_DLP_CMD || 'yt-dlp';
+    
     // First, try to get available subtitles in the temp directory
-    const { stdout: subsInfo } = await execAsync(`yt-dlp --cache-dir "${TEMP_DIR}" --list-subs "https://www.youtube.com/watch?v=${videoId}"`);
+    const { stdout: subsInfo } = await execAsync(`${ytdlpCmd} --cache-dir "${TEMP_DIR}" --list-subs "https://www.youtube.com/watch?v=${videoId}"`);
     console.log('Available subtitles:', subsInfo);
     console.log('Current working directory:', process.cwd());
     console.log('Video temp directory:', videoTempDir);
@@ -147,11 +198,11 @@ async function getTranscript(videoId) {
     // Try different methods to get transcript
     const methods = [
       // Method 1: Try manual subtitles in English
-      `yt-dlp --cache-dir "${TEMP_DIR}" --sub-lang en --write-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
       // Method 2: Try auto-generated subtitles in English
-      `yt-dlp --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
       // Method 3: Try original language subtitles
-      `yt-dlp --cache-dir "${TEMP_DIR}" --write-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`
     ];
 
     for (const cmd of methods) {
