@@ -20,14 +20,23 @@ async function ensureCacheDir() {
  * Saves a transcript to the cache
  * @param {string} videoId - YouTube video ID
  * @param {string} transcript - Transcript text
+ * @param {string} videoTitle - Video title to use in filename
  * @returns {Promise<void>}
  */
-async function saveTranscript(videoId, transcript) {
+async function saveTranscript(videoId, transcript, videoTitle) {
   try {
     await ensureCacheDir();
-    const filePath = path.join(CACHE_DIR, `${videoId}.txt`);
+    // Clean the title to make it filesystem-safe
+    const safeTitle = videoTitle
+      .replace(/[^a-z0-9\s-]/gi, '') // Remove special chars
+      .trim()
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .toLowerCase();
+    
+    // Use both title and ID to ensure uniqueness
+    const filePath = path.join(CACHE_DIR, `${safeTitle}-${videoId}.txt`);
     await fs.writeFile(filePath, transcript, 'utf8');
-    console.log(`Transcript cached for video ${videoId}`);
+    console.log(`Transcript cached for video ${videoId} with title: ${videoTitle}`);
   } catch (error) {
     console.error('Error saving transcript to cache:', error);
   }
@@ -40,13 +49,21 @@ async function saveTranscript(videoId, transcript) {
  */
 async function getTranscriptFromCache(videoId) {
   try {
-    const filePath = path.join(CACHE_DIR, `${videoId}.txt`);
-    const stats = await fs.stat(filePath);
+    // List all files in cache directory
+    const files = await fs.readdir(CACHE_DIR);
     
-    // Check if the file exists and is not empty
-    if (stats.isFile() && stats.size > 0) {
-      const transcript = await fs.readFile(filePath, 'utf8');
-      return transcript;
+    // Find file that ends with our video ID
+    const transcriptFile = files.find(file => file.endsWith(`-${videoId}.txt`));
+    
+    if (transcriptFile) {
+      const filePath = path.join(CACHE_DIR, transcriptFile);
+      const stats = await fs.stat(filePath);
+      
+      // Check if the file exists and is not empty
+      if (stats.isFile() && stats.size > 0) {
+        const transcript = await fs.readFile(filePath, 'utf8');
+        return transcript;
+      }
     }
     
     return null;

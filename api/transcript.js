@@ -312,8 +312,8 @@ async function getTranscript(videoId) {
           // Get video title
           const videoTitle = await getYouTubeTitle(videoId) || 'Unknown Title';
           
-          // Clean up the transcript
-          const cleaned = `Title: ${videoTitle}\n\n` + srtContent
+          // Clean up the transcript - remove the title prefix since we'll use it in the filename
+          const cleaned = srtContent
             .replace(/^\d+\n/gm, '')  // Remove subtitle numbers
             .replace(/\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n/g, '')  // Remove SRT timestamps
             .replace(/^(?:\d{1,2}:)?\d{1,2}:\d{2}\n/gm, '')  // Remove any remaining timestamps
@@ -340,7 +340,7 @@ async function getTranscript(videoId) {
             
             // Cache the transcript
             if (CACHE_TRANSCRIPTS) {
-              await saveTranscript(videoId, cleaned);
+              await saveTranscript(videoId, cleaned, videoTitle);
             }
             
             return cleaned;

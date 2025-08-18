@@ -321,9 +321,26 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
           `**${cleanTitle}**` : 
           `**YouTube Video (${videoId})**`;
           
+        // Try to parse and validate JSON
+        let jsonSummary;
+        try {
+          jsonSummary = JSON.parse(cleanedSummary);
+          // Ensure required fields exist
+          if (!jsonSummary.title || !jsonSummary.summary || !jsonSummary.noteworthy_mentions || !jsonSummary.verdict) {
+            throw new Error('Missing required fields in JSON summary');
+          }
+        } catch (e) {
+          console.error('Invalid JSON summary:', e);
+          await outputChannel.send({
+            content: `⚠️ Error: Generated summary is not in valid JSON format for video: ${originalUrl || getYouTubeUrl(videoId)}`,
+            flags: ['SuppressNotifications']
+          });
+          continue;
+        }
+
         await postToChannel(
           outputChannel,
-          `${titleDisplay}\n\n\`\`\`json\n${cleanedSummary}\n\`\`\``
+          `${titleDisplay}\n\n\`\`\`json\n${JSON.stringify(jsonSummary, null, 2)}\n\`\`\``
         );
         
         console.log(`Summary posted to ${outputChannel.name}`);
