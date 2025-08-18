@@ -14,6 +14,14 @@ const execAsync = util.promisify(exec);
 console.log('Checking yt-dlp installation...');
 
 async function findYtDlp() {
+  // Print environment info
+  console.log('Environment:', {
+    PATH: process.env.PATH,
+    PYTHONPATH: process.env.PYTHONPATH,
+    PWD: process.cwd(),
+    HOME: process.env.HOME
+  });
+
   const possiblePaths = [
     'yt-dlp',
     '/app/.heroku/python/bin/yt-dlp',
@@ -23,12 +31,49 @@ async function findYtDlp() {
   
   for (const ytdlpPath of possiblePaths) {
     try {
-      const { stdout } = await execAsync(`${ytdlpPath} --version`);
-      console.log(`yt-dlp found at: ${ytdlpPath}, version: ${stdout.trim()}`);
-      return ytdlpPath;
+      console.log(`Testing yt-dlp path: ${ytdlpPath}`);
+      const { stdout, stderr } = await execAsync(`${ytdlpPath} --version`);
+      
+      if (stderr) {
+        console.log(`Warning for ${ytdlpPath}:`, stderr);
+      }
+      
+      console.log(`✅ yt-dlp found at: ${ytdlpPath}, version: ${stdout.trim()}`);
+      
+      // Verify it can actually fetch video info
+      try {
+        const testCmd = `${ytdlpPath} --no-download --get-title --no-playlist https://www.youtube.com/watch?v=dQw4w9WgXcQ`;
+        const { stdout: testOut } = await execAsync(testCmd);
+        console.log(`✅ yt-dlp test successful with ${ytdlpPath}`);
+        return ytdlpPath;
+      } catch (testErr) {
+        console.log(`⚠️ yt-dlp test failed for ${ytdlpPath}:`, testErr.message);
+      }
     } catch (err) {
-      console.log(`Failed to find yt-dlp at: ${ytdlpPath}`);
+      console.log(`❌ Failed to find yt-dlp at: ${ytdlpPath}`);
+      console.log('Error:', err.message);
+      
+      // Try to get more info about Python/pip if it's the module version
+      if (ytdlpPath.includes('python')) {
+        try {
+          const { stdout: pipList } = await execAsync('python3 -m pip list');
+          console.log('Installed Python packages:', pipList);
+        } catch (pipErr) {
+          console.log('Failed to list Python packages:', pipErr.message);
+        }
+      }
     }
+  }
+  
+  // Last resort: try to install yt-dlp directly
+  try {
+    console.log('Attempting to install yt-dlp as last resort...');
+    await execAsync('python3 -m pip install --user yt-dlp');
+    const { stdout } = await execAsync('python3 -m yt_dlp --version');
+    console.log('Successfully installed yt-dlp:', stdout.trim());
+    return 'python3 -m yt_dlp';
+  } catch (err) {
+    console.error('❌ Failed to install yt-dlp:', err.message);
   }
   
   console.error('❌ yt-dlp not found in any expected location');
@@ -96,34 +141,78 @@ async function getTranscript(videoId) {
           console.log(`Verifying video ${videoId} (attempt ${attempt}/${maxRetries})`);
           
           const ytdlpCmd = YT_DLP_CMD || 'yt-dlp';
-          const cmd = [
+          
+          // Print current state
+          console.log('Verification attempt details:', {
+            attempt,
             ytdlpCmd,
-            '--no-download',
-            '--get-title',
-            '--verbose',
-            '--ignore-config',
-            '--no-playlist',
-            '--no-cache-dir',
-            '--extractor-args',
-            'youtube:player_client=android',
-            '--user-agent',
-            '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"',
-            `https://www.youtube.com/watch?v=${videoId}`
-          ].join(' ');
+            pwd: process.cwd(),
+            env: {
+              PATH: process.env.PATH,
+              PYTHONPATH: process.env.PYTHONPATH
+            }
+          });
           
-          const { stdout, stderr } = await execAsync(cmd + ' 2>&1');
+          // Try different command variations
+          const cmdVariations = [
+            // Standard command
+            [
+              ytdlpCmd,
+              '--no-download',
+              '--get-title',
+              '--verbose',
+              '--ignore-config',
+              '--no-playlist',
+              '--no-cache-dir',
+              '--extractor-args',
+              'youtube:player_client=android',
+              '--user-agent',
+              '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"',
+              `https://www.youtube.com/watch?v=${videoId}`
+            ].join(' '),
+            
+            // Simpler command
+            [
+              ytdlpCmd,
+              '--no-download',
+              '--get-title',
+              '--no-playlist',
+              `https://www.youtube.com/watch?v=${videoId}`
+            ].join(' '),
+            
+            // With debug info
+            [
+              ytdlpCmd,
+              '--verbose',
+              '--dump-json',
+              '--no-download',
+              '--no-playlist',
+              `https://www.youtube.com/watch?v=${videoId}`
+            ].join(' ')
+          ];
           
-          if (stderr && stderr.includes('Video unavailable')) {
-            console.log('Video is explicitly marked as unavailable');
-            return false;
+          // Try each command variation
+          for (const cmd of cmdVariations) {
+            try {
+              console.log(`Trying command: ${cmd}`);
+              const { stdout, stderr } = await execAsync(cmd + ' 2>&1');
+              
+              if (stderr) {
+                console.log('Command stderr:', stderr);
+              }
+              
+              if (stdout) {
+                console.log('Command stdout:', stdout.substring(0, 200) + '...');
+                return true;
+              }
+            } catch (cmdErr) {
+              console.log(`Command failed: ${cmdErr.message}`);
+              // Continue to next variation
+            }
           }
           
-          if (stdout) {
-            console.log('Video title found:', stdout.trim());
-            return true;
-          }
-          
-          throw new Error('No output from yt-dlp');
+          // If all variations failed, throw error
+          throw new Error('All command variations failed');
         } catch (error) {
           const errorMsg = error.message || error;
           console.log(`Attempt ${attempt} failed:`, errorMsg);
