@@ -2,21 +2,22 @@ Link-to-Summary Test Results
 ----------------------------
 Video Title: dQw4w9WgXcQ
 Transcript Length: 2135 characters
-Summary Length: 543 characters
+Summary Length: 558 characters
 
 Time Breakdown:
-Total Time: 5.56 seconds
+Total Time: 2.99 seconds
 
 Summary:
-```json
 {
   "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
   "summary": [
-    "The video features the song 'Never Gonna Give You Up' by Rick Astley.",
-    "The lyrics focus on a promise of commitment and assurance of trust in a romantic relationship.",
-    "The chorus emphasizes the pledge to never abandon, disappoint, or deceive the partner."
+    "The song emphasizes a strong commitment in a relationship.",
+    "The lyrics repeatedly assure that the singer will not betray or hurt the other person.",
+    "There's a recognition of mutual understanding and unspoken feelings between the two people involved."
   ],
-  "noteworthy_mentions": [],
-  "verdict": "The video is a remastered 4K version of Rick Astley's iconic song, expressing unwavering dedication in love."
+  "noteworthy_mentions": [
+    "Rick Astley",
+    "The song is a famous example of the 'Rickroll' meme."
+  ],
+  "verdict": "An iconic pop song about unwavering loyalty and commitment."
 }
-```

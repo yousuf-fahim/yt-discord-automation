@@ -165,15 +165,26 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
           }
         }
         
-        // Use video title if available, or a default title with video ID
-        const displayTitle = videoTitle || `YouTube Video (${videoId})`;
+        // Clean up video title - remove unwanted text
+        let cleanTitle = videoTitle;
+        if (cleanTitle) {
+          // Remove "- YouTube" and similar variations
+          cleanTitle = cleanTitle.replace(/\s*-\s*YouTube\s*$/i, '').trim();
+        }
         
-        // Use video title for transcript file name
-        const transcriptFileName = videoTitle ? `${videoTitle.replace(/[^a-zA-Z0-9-_\.]/g, '_')}_transcript.txt` : `${videoId}_transcript.txt`;
+        // Use cleaned video title if available, or a default title with video ID
+        const displayTitle = cleanTitle || `YouTube Video (${videoId})`;
+        
+        // Create a safe filename from the cleaned video title
+        const safeFilename = cleanTitle 
+          ? cleanTitle.replace(/[^a-zA-Z0-9\s\-_]/g, '').replace(/\s+/g, '_').substring(0, 100)
+          : videoId;
+        
         await transcriptsChannel.send({
+          content: `📝 **TRANSCRIPT: ${displayTitle}**\n\n`,
           files: [{
             attachment: transcriptBuffer,
-            name: transcriptFileName
+            name: `${safeFilename}_transcript.txt`
           }]
         });
       }
@@ -185,13 +196,11 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
         console.log(`Processing prompt channel: ${promptChannel.name}`);
         
         // Get the pinned prompt
-        let prompt = await getPinnedMessage(promptChannel);
+        const prompt = await getPinnedMessage(promptChannel);
         if (!prompt) {
           console.warn(`No pinned prompt found in channel ${promptChannel.name}`);
           continue;
         }
-        // Enforce strict prompt format for OpenAI
-        prompt = `You’re an advanced content summarizer.\nYour task is to analyze the transcript of a YouTube video and return a concise summary in JSON format only.\nInclude the video’s topic, key points, and any noteworthy mentions.\nDo not include anything outside of the JSON block. Be accurate, structured, and informative.\n\nFormat your response like this:\n\n{\n  "title": "Insert video title here",\n  "summary": [\n    "Key point 1",\n    "Key point 2",\n    "Key point 3"\n  ],\n  "noteworthy_mentions": [\n    "Person, project, or tool name if mentioned",\n    "Important reference or example"\n  ],\n  "verdict": "Brief 1-line overall takeaway"\n}`;
         
         // Find the corresponding output channel
         const outputChannel = await findCorrespondingOutputChannel(
@@ -262,63 +271,59 @@ async function generateSummaries(client, videoId, transcript, originalUrl) {
           summariesCollected = global.summaryStats[today].count;
         }
         
-        // Parse JSON summary into a readable Discord format
+        // Parse JSON to extract video title and validate format
         let videoTitle = null;
-        let formattedSummary = summary;
+        let cleanedSummary = summary;
         
         try {
+          // Try to extract title from JSON for display purposes
           const summaryObj = JSON.parse(summary);
-          if (summaryObj) {
-            // Extract title
-            if (summaryObj.title) {
-              videoTitle = summaryObj.title;
-            }
-            
-            // Format JSON as readable text with Discord markdown and better separation
-            formattedSummary = `${summaryObj.title || "Video Summary"}\n\n`;
-            
-            formattedSummary += "**Summary:**\n";
-            if (summaryObj.summary && typeof summaryObj.summary === 'string') {
-              formattedSummary += `${summaryObj.summary}\n\n`;
-            } else if (summaryObj.summary && Array.isArray(summaryObj.summary)) {
-              formattedSummary += `${summaryObj.summary.join('\n')}\n\n`;
-            }
-            
-            formattedSummary += "**Key Points:**\n";
-            if (summaryObj.summary && Array.isArray(summaryObj.summary)) {
-              summaryObj.summary.forEach(point => {
-                formattedSummary += `• ${point}\n`;
-              });
-              formattedSummary += "\n";
-            }
-            
-            if (summaryObj.verdict) {
-              formattedSummary += `**Verdict:**\n${summaryObj.verdict}\n\n`;
-            }
-            
-            if (summaryObj.noteworthy_mentions && Array.isArray(summaryObj.noteworthy_mentions) && summaryObj.noteworthy_mentions.length > 0) {
-              formattedSummary += "**Noteworthy Mentions:**\n";
-              summaryObj.noteworthy_mentions.forEach(mention => {
-                formattedSummary += `• ${mention}\n`;
-              });
-            }
+          if (summaryObj && summaryObj.title) {
+            videoTitle = summaryObj.title;
+          }
+          
+          // Clean up the JSON - remove markdown code blocks and any text outside JSON
+          let tempSummary = summary;
+          
+          // Remove markdown code blocks if present
+          if (tempSummary.includes('```json')) {
+            tempSummary = tempSummary.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+          }
+          if (tempSummary.includes('```')) {
+            tempSummary = tempSummary.replace(/```\s*/g, '');
+          }
+          
+          // Find the JSON object boundaries
+          const jsonStart = tempSummary.indexOf('{');
+          const jsonEnd = tempSummary.lastIndexOf('}');
+          if (jsonStart !== -1 && jsonEnd !== -1) {
+            cleanedSummary = tempSummary.substring(jsonStart, jsonEnd + 1);
+            // Validate it's proper JSON
+            JSON.parse(cleanedSummary);
           }
         } catch (e) {
-          // Not JSON or couldn't parse - use summary as-is
-          console.log('Could not parse JSON summary:', e.message);
+          console.log('Could not parse JSON summary, using as-is:', e.message);
+          console.log('Summary content:', summary.substring(0, 200) + '...');
         }
         
-        // Post the formatted summary to the output channel
+        // Clean up video title - remove unwanted text  
+        let cleanTitle = videoTitle;
+        if (cleanTitle) {
+          // Remove "- YouTube" and similar variations
+          cleanTitle = cleanTitle.replace(/\s*-\s*YouTube\s*$/i, '').trim();
+        }
+        
+        // Post the JSON summary to the output channel
         console.log(`Posting summary to ${outputChannel.name}...`);
         
-        // Use video title if available, otherwise use a default title with video ID
-        const titleDisplay = videoTitle ? 
-          `${videoTitle}` : 
-          `YouTube Video (${videoId})`;
+        // Use cleaned video title if available, otherwise use a default title with video ID
+        const titleDisplay = cleanTitle ? 
+          `**${cleanTitle}**` : 
+          `**YouTube Video (${videoId})**`;
           
         await postToChannel(
           outputChannel,
-          `**SUMMARY: ${titleDisplay}**\n\n${formattedSummary}`
+          `${titleDisplay}\n\n\`\`\`json\n${cleanedSummary}\n\`\`\``
         );
         
         console.log(`Summary posted to ${outputChannel.name}`);

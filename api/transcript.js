@@ -128,10 +128,10 @@ async function getTranscript(videoId) {
     console.log('Memory usage:', process.memoryUsage());
     console.log('Node version:', process.version);
     
-    // Try to verify video exists, but do not abort if yt-dlp fails
-    const verified = await verifyVideoExists(videoId);
-    if (!verified) {
-      console.log('yt-dlp --get-title failed, will still attempt subtitle extraction and fallback.');
+    // Verify video exists first
+    if (!await verifyVideoExists(videoId)) {
+      console.log('Video is unavailable');
+      return null;
     }
 
     // Set up temp directory for extraction
@@ -139,12 +139,8 @@ async function getTranscript(videoId) {
     await fs.mkdir(videoTempDir, { recursive: true });
     
     // First, try to get available subtitles in the temp directory
-    try {
-      const { stdout: subsInfo } = await execAsync(`yt-dlp --cache-dir "${TEMP_DIR}" --list-subs "https://www.youtube.com/watch?v=${videoId}"`);
-      console.log('Available subtitles:', subsInfo);
-    } catch (subsError) {
-      console.log('yt-dlp --list-subs failed:', subsError?.message || subsError);
-    }
+    const { stdout: subsInfo } = await execAsync(`yt-dlp --cache-dir "${TEMP_DIR}" --list-subs "https://www.youtube.com/watch?v=${videoId}"`);
+    console.log('Available subtitles:', subsInfo);
     console.log('Current working directory:', process.cwd());
     console.log('Video temp directory:', videoTempDir);
 

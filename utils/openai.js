@@ -63,26 +63,9 @@ function splitTextIntoChunks(text, maxTokens = MAX_TOKENS) {
  */
 async function generateSummary(transcript, prompt) {
   try {
-    // Check if transcript needs to be split
-    const chunks = splitTextIntoChunks(transcript);
-    
-    if (chunks.length > 1) {
-      console.log(`Transcript split into ${chunks.length} chunks`);
-      
-      // For multi-chunk transcripts, we need to summarize each chunk
-      // and then combine the summaries
-      const chunkSummaries = [];
-      
-      for (let i = 0; i < chunks.length; i++) {
-        console.log(`Processing chunk ${i + 1}/${chunks.length}`);
-        
-        const chunkPrompt = `${prompt}\n\nThis is part ${i + 1} of ${chunks.length} of the transcript:\n\n${chunks[i]}`;
-        
-        const response = await openai.chat.completions.create({
-          model: OPENAI_MODEL,
-          messages: [
-            { role: 'system', content: 'You\'re an advanced content summarizer. Your task is to analyze the transcript of a YouTube video and return a concise summary in JSON format only. Include the video\'s topic, key points, and any noteworthy mentions. Do not include anything outside of the JSON block. Be accurate, structured, and informative.' },
-            { role: 'user', content: `Format your response like this:
+    // Always use the pinned prompt as the system prompt
+    // If the format block is missing, append it
+    const formatBlock = `Format your response as valid JSON only. Do not include any text outside the JSON. Use this exact structure:
 {
   "title": "Insert video title here",
   "summary": [
@@ -95,94 +78,60 @@ async function generateSummary(transcript, prompt) {
     "Important reference or example"
   ],
   "verdict": "Brief 1-line overall takeaway"
-}
+}`;
 
-Here's the transcript to analyze:
+    let effectivePrompt = prompt;
+    if (!prompt.includes('Format your response')) {
+      effectivePrompt = prompt.trim() + '\n\n' + formatBlock;
+    }
 
-${chunkPrompt}` }
+    // Enhanced system message to enforce JSON output
+    const systemMessage = `You are an expert content summarizer. You MUST respond with valid JSON only. Do not include any text before or after the JSON object. Do not wrap the JSON in markdown code blocks or backticks. The JSON must be properly formatted and parseable.
+
+${effectivePrompt}`;
+
+    const chunks = splitTextIntoChunks(transcript);
+    if (chunks.length > 1) {
+      console.log(`Transcript split into ${chunks.length} chunks`);
+      const chunkSummaries = [];
+      for (let i = 0; i < chunks.length; i++) {
+        console.log(`Processing chunk ${i + 1}/${chunks.length}`);
+        const chunkPrompt = `This is part ${i + 1} of ${chunks.length} of the transcript:\n\n${chunks[i]}`;
+        const response = await openai.chat.completions.create({
+          model: OPENAI_MODEL,
+          messages: [
+            { role: 'system', content: systemMessage },
+            { role: 'user', content: chunkPrompt }
           ],
           temperature: 0.5,
           max_tokens: 1000
         });
-        
-        const chunkSummary = response.choices[0].message.content;
-        chunkSummaries.push(chunkSummary);
+        chunkSummaries.push(response.choices[0].message.content);
       }
-      
-      // Now combine the chunk summaries
-      const combinedSummaryPrompt = `
-        Below are summaries of different parts of a YouTube video transcript.
-        Please combine them into a single coherent summary following the format specified in the original request:
-        
-        ${chunkSummaries.join('\n\n---\n\n')}
-        
-        Original format request:
-        ${prompt}
-      `;
-      
+      // Combine chunk summaries
+      const combinedSummaryPrompt = `Below are summaries of different parts of a YouTube video transcript. Please combine them into a single coherent summary following the JSON format:\n\n${chunkSummaries.join('\n\n---\n\n')}`;
       const finalResponse = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
-          { role: 'system', content: 'You\'re an advanced content summarizer. Your task is to combine multiple transcript summaries into a single coherent JSON summary. Be accurate, structured, and informative.' },
-          { role: 'user', content: `Format your response like this:
-{
-  "title": "Insert video title here",
-  "summary": [
-    "Key point 1",
-    "Key point 2",
-    "Key point 3"
-  ],
-  "noteworthy_mentions": [
-    "Person, project, or tool name if mentioned",
-    "Important reference or example"
-  ],
-  "verdict": "Brief 1-line overall takeaway"
-}
-
-Here are the summaries to combine:
-
-${combinedSummaryPrompt}` }
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: combinedSummaryPrompt }
         ],
         temperature: 0.5,
         max_tokens: 1000
       });
-      
       return finalResponse.choices[0].message.content;
     } else {
-      // For single-chunk transcripts, just summarize directly
-      const fullPrompt = `${prompt}\n\nTranscript:\n\n${transcript}`;
-      
-      // Extract video title from transcript
-      const titleMatch = transcript.match(/Title: (.*?)\n/);
-      const videoTitle = titleMatch ? titleMatch[1] : 'Unknown Title';
-      
+      // Single chunk
+      const fullPrompt = `Transcript:\n\n${transcript}`;
       const response = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
-          { role: 'system', content: 'You\'re an advanced content summarizer. Your task is to analyze the transcript of a YouTube video and return a concise summary in JSON format only. Include the video\'s topic, key points, and any noteworthy mentions. Do not include anything outside of the JSON block. Use the exact title from the transcript. Be accurate, structured, and informative.' },
-          { role: 'user', content: fullPrompt + `\n\nFormat your response like this, using the exact title from the transcript:
-{
-  "title": "${videoTitle}",
-  "summary": [
-    "Key point 1",
-    "Key point 2",
-    "Key point 3"
-  ],
-  "noteworthy_mentions": [
-    "Person, project, or tool name if mentioned",
-    "Important reference or example"
-  ],
-  "verdict": "Brief 1-line overall takeaway"
-}
-
-Here's the transcript to analyze:
-
-${fullPrompt}` }
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: fullPrompt }
         ],
         temperature: 0.5,
         max_tokens: 1000
       });
-      
       return response.choices[0].message.content;
     }
   } catch (error) {
@@ -197,7 +146,7 @@ ${fullPrompt}` }
       console.error('Error message:', error.message);
     }
     
-    // Return a formatted error message
+    // Return a formatted error message as JSON
     return JSON.stringify({
       title: "Error Generating Summary",
       summary: ["Failed to generate summary due to an API error."],
