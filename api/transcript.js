@@ -22,11 +22,17 @@ async function findYtDlp() {
     HOME: process.env.HOME
   });
 
-  const possiblePaths = [
-    'yt-dlp',
+  // Prioritize Heroku-specific paths for cloud deployment
+  const possiblePaths = process.env.NODE_ENV === 'production' || process.env.DYNO ? [
+    'python3 -m yt_dlp',  // Most reliable in Heroku
     '/app/.heroku/python/bin/yt-dlp',
-    '~/.local/bin/yt-dlp',
-    'python3 -m yt_dlp'
+    'yt-dlp',
+    '~/.local/bin/yt-dlp'
+  ] : [
+    'yt-dlp',  // Local development
+    'python3 -m yt_dlp',
+    '/app/.heroku/python/bin/yt-dlp',
+    '~/.local/bin/yt-dlp'
   ];
   
   for (const ytdlpPath of possiblePaths) {
@@ -40,14 +46,23 @@ async function findYtDlp() {
       
       console.log(`✅ yt-dlp found at: ${ytdlpPath}, version: ${stdout.trim()}`);
       
-      // Verify it can actually fetch video info
+      // Verify it can actually fetch auto-generated subtitles (our main use case)
       try {
-        const testCmd = `${ytdlpPath} --no-download --get-title --no-playlist https://www.youtube.com/watch?v=dQw4w9WgXcQ`;
-        const { stdout: testOut } = await execAsync(testCmd);
-        console.log(`✅ yt-dlp test successful with ${ytdlpPath}`);
+        const testCmd = `${ytdlpPath} --write-auto-sub --convert-subs srt --skip-download --no-playlist https://www.youtube.com/watch?v=dQw4w9WgXcQ`;
+        const { stdout: testOut } = await execAsync(testCmd, { timeout: 15000 });
+        console.log(`✅ yt-dlp auto-subtitle test successful with ${ytdlpPath}`);
         return ytdlpPath;
       } catch (testErr) {
-        console.log(`⚠️ yt-dlp test failed for ${ytdlpPath}:`, testErr.message);
+        console.log(`⚠️ yt-dlp auto-subtitle test failed for ${ytdlpPath}:`, testErr.message);
+        // Fallback: try basic functionality
+        try {
+          const fallbackCmd = `${ytdlpPath} --no-download --get-title --no-playlist https://www.youtube.com/watch?v=dQw4w9WgXcQ`;
+          const { stdout: fallbackOut } = await execAsync(fallbackCmd, { timeout: 10000 });
+          console.log(`✅ yt-dlp basic test successful with ${ytdlpPath}`);
+          return ytdlpPath;
+        } catch (fallbackErr) {
+          console.log(`⚠️ yt-dlp basic test failed for ${ytdlpPath}:`, fallbackErr.message);
+        }
       }
     } catch (err) {
       console.log(`❌ Failed to find yt-dlp at: ${ytdlpPath}`);
@@ -109,11 +124,23 @@ async function waitForYtDlp(maxWaitMs = 10000) {
   return YT_DLP_CMD;
 }
 
-// Create temp directory for yt-dlp cache
-const TEMP_DIR = path.join(process.cwd(), 'temp');
+// Create temp directory for yt-dlp cache - Heroku compatible
+const TEMP_DIR = process.env.DYNO ? '/tmp/yt-discord-temp' : path.join(process.cwd(), 'temp');
 console.log('Using temp directory:', TEMP_DIR);
-fs.mkdir(TEMP_DIR, { recursive: true })
-  .then(() => console.log('Successfully created temp directory'))
+fs.mkdir(TEMP_DIR, { recursive: true, mode: 0o777 })
+  .then(async () => {
+    console.log('Successfully created temp directory');
+    // Ensure Heroku cache directory exists (only if /app exists)
+    if (process.env.DYNO) {
+      try {
+        await fs.access('/app');
+        await fs.mkdir('/app/.cache', { recursive: true, mode: 0o777 });
+      } catch (err) {
+        console.log('Note: /app directory not available (likely local test)');
+      }
+    }
+  })
+  .then(() => console.log('Cache directories ready'))
   .catch((err) => console.error('Error creating temp directory:', err));
 
 // Configuration
@@ -273,31 +300,43 @@ async function getTranscript(videoId) {
 
     // Set up temp directory for extraction
     const videoTempDir = path.join(TEMP_DIR, videoId);
-    await fs.mkdir(videoTempDir, { recursive: true });
+    await fs.mkdir(videoTempDir, { recursive: true, mode: 0o777 });
     
     // Get the yt-dlp command to use
     const ytdlpCmd = YT_DLP_CMD || 'yt-dlp';
     
-    // First, try to get available subtitles in the temp directory
-    const { stdout: subsInfo } = await execAsync(`${ytdlpCmd} --cache-dir "${TEMP_DIR}" --list-subs "https://www.youtube.com/watch?v=${videoId}"`);
-    console.log('Available subtitles:', subsInfo);
     console.log('Current working directory:', process.cwd());
     console.log('Video temp directory:', videoTempDir);
 
     // Try different methods to get transcript
     const methods = [
-      // Method 1: Try manual subtitles in English
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
-      // Method 2: Try auto-generated subtitles in English
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
-      // Method 3: Try original language subtitles
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-sub --convert-subs srt --skip-download "https://www.youtube.com/watch?v=${videoId}"`
+      // Method 1: Try auto-generated subtitles in English (most reliable)
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
+      // Method 2: Try original language subtitles as fallback
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`
     ];
 
     for (const cmd of methods) {
       try {
-        // Execute yt-dlp command in the temp directory
-        const { stdout, stderr } = await execAsync(cmd, { cwd: videoTempDir });
+        console.log(`Executing command: ${cmd}`);
+        // Execute yt-dlp command with optimized settings for cloud deployment
+        const isHeroku = !!process.env.DYNO;
+        const { stdout, stderr } = await execAsync(cmd, { 
+          timeout: isHeroku ? 60000 : 45000, // Extra time for Heroku cold starts
+          shell: process.platform === 'win32' ? 'cmd' : '/bin/bash',
+          env: { 
+            ...process.env, 
+            PATH: isHeroku ? `/app/.heroku/python/bin:${process.env.PATH}` : process.env.PATH,
+            TMPDIR: TEMP_DIR,
+            TEMP: TEMP_DIR,
+            HOME: process.env.HOME || '/app',
+            // Heroku-specific environment variables
+            ...(isHeroku && {
+              PYTHONPATH: `/app/.heroku/python/lib/python${process.env.PYTHON_VERSION || '3.11'}/site-packages`,
+              LD_LIBRARY_PATH: '/app/.heroku/python/lib'
+            })
+          }
+        });
         console.log(`yt-dlp output for method:`, stdout);
         if (stderr) console.error(`yt-dlp stderr:`, stderr);
         
@@ -348,6 +387,15 @@ async function getTranscript(videoId) {
         }
       } catch (methodError) {
         console.log(`Method failed:`, methodError?.message || methodError);
+        
+        // If the first method (auto-generated subtitles) fails with certain errors,
+        // don't bother trying the fallback method as it's likely to fail too
+        if (methodError?.message?.includes('Video unavailable') || 
+            methodError?.message?.includes('Private video') ||
+            methodError?.message?.includes('This live event will begin in')) {
+          console.log('Video appears to be unavailable, skipping remaining methods');
+          break;
+        }
         continue;
       }
     }
