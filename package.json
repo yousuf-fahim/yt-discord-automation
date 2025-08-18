@@ -10,7 +10,7 @@
     "test:prod": "NODE_ENV=production node test-enhanced-transcript.js",
     "monitor": "node utils/monitoring.js stats",
     "clean-cache": "node api/manage-cache.js clean",
-    "heroku-prebuild": "npm install puppeteer && npx puppeteer browsers install chrome",
+    "heroku-prebuild": "echo 'No prebuild needed'",
     "heroku-postbuild": "echo 'Skipping npm postbuild'"
   },
   "keywords": [
@@ -27,15 +27,12 @@
     "dotenv": "^16.3.1",
     "node-cron": "^3.0.2",
     "openai": "^4.10.0",
-    "puppeteer": "^24.16.2",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
   "engines": {
-    "node": ">=23.8.0"
+    "node": "20.x"
   }
 }
