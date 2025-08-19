@@ -182,50 +182,17 @@ async function getTranscript(videoId) {
           
           // Try different command variations with anti-bot measures
           const cmdVariations = [
-            // Method 1: Use multiple clients and bypass techniques
-            [
-              ytdlpCmd,
-              '--no-download',
-              '--get-title',
-              '--ignore-config',
-              '--no-playlist',
-              '--no-cache-dir',
-              '--extractor-args',
-              'youtube:player_client=android,web,tv_embedded',
-              '--user-agent',
-              '"Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36"',
-              '--add-header',
-              'Accept-Language:en-US,en;q=0.9',
-              '--sleep-requests', '2',
-              '--sleep-interval', '1',
-              `https://www.youtube.com/watch?v=${videoId}`
-            ].join(' '),
+            // Method 1: Simple approach first (most reliable)
+            `${ytdlpCmd} --no-download --get-title --no-playlist -- "https://www.youtube.com/watch?v=${videoId}"`,
             
-            // Method 2: TV embedded client (often bypasses restrictions)
-            [
-              ytdlpCmd,
-              '--no-download',
-              '--get-title',
-              '--no-playlist',
-              '--extractor-args',
-              'youtube:player_client=tv_embedded',
-              '--user-agent',
-              '"Mozilla/5.0 (PlayStation 4 5.55) AppleWebKit/601.2 (KHTML, like Gecko)"',
-              '--sleep-requests', '3',
-              `https://www.youtube.com/watch?v=${videoId}`
-            ].join(' '),
+            // Method 2: TV embedded client (often bypasses restrictions)  
+            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=tv_embedded" --sleep-requests 2 -- "https://www.youtube.com/watch?v=${videoId}"`,
             
-            // Method 3: Basic with rate limiting
-            [
-              ytdlpCmd,
-              '--no-download',
-              '--get-title',
-              '--no-playlist',
-              '--sleep-requests', '5',
-              '--user-agent',
-              '"Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1"',
-              `https://www.youtube.com/watch?v=${videoId}`
-            ].join(' ')
+            // Method 3: Android client with minimal options
+            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=android" --sleep-requests 3 -- "https://www.youtube.com/watch?v=${videoId}"`,
+            
+            // Method 4: Web client as last resort
+            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=web" --sleep-requests 5 -- "https://www.youtube.com/watch?v=${videoId}"`
           ];
           
           // Try each command variation
@@ -263,6 +230,9 @@ async function getTranscript(videoId) {
           } else if (errorMsg.includes('This live event will begin in')) {
             console.log('Video is an upcoming livestream');
             return false;
+          } else if (errorMsg.includes('Please sign in') || errorMsg.includes('authentication')) {
+            console.log('Video requires authentication - will try different methods');
+            // Don't return false here, let it try other methods
           }
           
           if (attempt < maxRetries) {
@@ -320,14 +290,17 @@ async function getTranscript(videoId) {
 
     // Try different methods to get transcript with anti-bot measures
     const methods = [
-      // Method 1: TV embedded client (most reliable for avoiding bot detection)
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --extractor-args youtube:player_client=tv_embedded --user-agent "Mozilla/5.0 (PlayStation 4 5.55) AppleWebKit/601.2 (KHTML, like Gecko)" --sleep-requests 3 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
+      // Method 1: Simple approach first (most reliable)
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
       
-      // Method 2: Android client with rate limiting
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36" --sleep-requests 5 --sleep-interval 2 --add-header "Accept-Language:en-US,en;q=0.9" --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
+      // Method 2: TV embedded client (often bypasses restrictions)
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=tv_embedded" --sleep-requests 2 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
       
-      // Method 3: Web client with heavy rate limiting as last resort
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args youtube:player_client=web --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1" --sleep-requests 10 --sleep-interval 3 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`
+      // Method 3: Android client with minimal options
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=android" --sleep-requests 3 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
+      
+      // Method 4: Web client as last resort
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=web" --sleep-requests 5 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`
     ];
 
     for (const cmd of methods) {
@@ -414,6 +387,12 @@ async function getTranscript(videoId) {
           console.log('Video appears to be unavailable, skipping remaining methods');
           break;
         }
+        
+        // For authentication errors, continue trying other methods
+        if (methodError?.message?.includes('Please sign in') || 
+            methodError?.message?.includes('authentication')) {
+          console.log('Authentication required, trying next method...');
+        }
         continue;
       }
     }
@@ -422,7 +401,7 @@ async function getTranscript(videoId) {
     console.log('All primary methods failed, trying fallback with extreme rate limiting...');
     
     try {
-      const fallbackCmd = `${ytdlpCmd} --write-auto-sub --convert-subs srt --no-playlist --ignore-config --no-cache-dir --sleep-requests 15 --sleep-interval 5 --user-agent "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`;
+      const fallbackCmd = `${ytdlpCmd} --write-auto-sub --convert-subs srt --no-playlist --ignore-config --no-cache-dir --sleep-requests 15 --sleep-interval 5 --user-agent "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`;
       
       console.log(`Trying fallback command: ${fallbackCmd}`);
       const { stdout: fallbackStdout } = await execAsync(fallbackCmd, { 
