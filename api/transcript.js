@@ -180,40 +180,50 @@ async function getTranscript(videoId) {
             }
           });
           
-          // Try different command variations
+          // Try different command variations with anti-bot measures
           const cmdVariations = [
-            // Standard command
+            // Method 1: Use multiple clients and bypass techniques
             [
               ytdlpCmd,
               '--no-download',
               '--get-title',
-              '--verbose',
               '--ignore-config',
               '--no-playlist',
               '--no-cache-dir',
               '--extractor-args',
-              'youtube:player_client=android',
+              'youtube:player_client=android,web,tv_embedded',
               '--user-agent',
-              '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"',
+              '"Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36"',
+              '--add-header',
+              'Accept-Language:en-US,en;q=0.9',
+              '--sleep-requests', '2',
+              '--sleep-interval', '1',
               `https://www.youtube.com/watch?v=${videoId}`
             ].join(' '),
             
-            // Simpler command
+            // Method 2: TV embedded client (often bypasses restrictions)
             [
               ytdlpCmd,
               '--no-download',
               '--get-title',
               '--no-playlist',
+              '--extractor-args',
+              'youtube:player_client=tv_embedded',
+              '--user-agent',
+              '"Mozilla/5.0 (PlayStation 4 5.55) AppleWebKit/601.2 (KHTML, like Gecko)"',
+              '--sleep-requests', '3',
               `https://www.youtube.com/watch?v=${videoId}`
             ].join(' '),
             
-            // With debug info
+            // Method 3: Basic with rate limiting
             [
               ytdlpCmd,
-              '--verbose',
-              '--dump-json',
               '--no-download',
+              '--get-title',
               '--no-playlist',
+              '--sleep-requests', '5',
+              '--user-agent',
+              '"Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1"',
               `https://www.youtube.com/watch?v=${videoId}`
             ].join(' ')
           ];
@@ -308,12 +318,16 @@ async function getTranscript(videoId) {
     console.log('Current working directory:', process.cwd());
     console.log('Video temp directory:', videoTempDir);
 
-    // Try different methods to get transcript
+    // Try different methods to get transcript with anti-bot measures
     const methods = [
-      // Method 1: Try auto-generated subtitles in English (most reliable)
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
-      // Method 2: Try original language subtitles as fallback
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`
+      // Method 1: TV embedded client (most reliable for avoiding bot detection)
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --extractor-args youtube:player_client=tv_embedded --user-agent "Mozilla/5.0 (PlayStation 4 5.55) AppleWebKit/601.2 (KHTML, like Gecko)" --sleep-requests 3 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
+      
+      // Method 2: Android client with rate limiting
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36" --sleep-requests 5 --sleep-interval 2 --add-header "Accept-Language:en-US,en;q=0.9" --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`,
+      
+      // Method 3: Web client with heavy rate limiting as last resort
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args youtube:player_client=web --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1" --sleep-requests 10 --sleep-interval 3 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`
     ];
 
     for (const cmd of methods) {
@@ -322,14 +336,18 @@ async function getTranscript(videoId) {
         // Execute yt-dlp command with optimized settings for cloud deployment
         const isHeroku = !!process.env.DYNO;
         const { stdout, stderr } = await execAsync(cmd, { 
-          timeout: isHeroku ? 60000 : 45000, // Extra time for Heroku cold starts
+          timeout: isHeroku ? 120000 : 45000, // Extended timeout for rate limiting and bot detection
           shell: process.platform === 'win32' ? 'cmd' : '/bin/bash',
+          maxBuffer: 1024 * 1024 * 10, // 10MB buffer for large outputs
           env: { 
             ...process.env, 
             PATH: isHeroku ? `/app/.heroku/python/bin:${process.env.PATH}` : process.env.PATH,
             TMPDIR: TEMP_DIR,
             TEMP: TEMP_DIR,
             HOME: process.env.HOME || '/app',
+            // Additional environment variables to avoid detection
+            HTTP_PROXY: process.env.HTTP_PROXY || '',
+            HTTPS_PROXY: process.env.HTTPS_PROXY || '',
             // Heroku-specific environment variables
             ...(isHeroku && {
               PYTHONPATH: `/app/.heroku/python/lib/python${process.env.PYTHON_VERSION || '3.11'}/site-packages`,
@@ -400,7 +418,70 @@ async function getTranscript(videoId) {
       }
     }
     
-    console.log('No transcripts found');
+    // Final fallback: try with minimal options and maximum delays
+    console.log('All primary methods failed, trying fallback with extreme rate limiting...');
+    
+    try {
+      const fallbackCmd = `${ytdlpCmd} --write-auto-sub --convert-subs srt --no-playlist --ignore-config --no-cache-dir --sleep-requests 15 --sleep-interval 5 --user-agent "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download "https://www.youtube.com/watch?v=${videoId}"`;
+      
+      console.log(`Trying fallback command: ${fallbackCmd}`);
+      const { stdout: fallbackStdout } = await execAsync(fallbackCmd, { 
+        timeout: 180000, // 3 minutes for extreme case
+        maxBuffer: 1024 * 1024 * 10,
+        env: { 
+          ...process.env, 
+          PATH: process.env.DYNO ? `/app/.heroku/python/bin:${process.env.PATH}` : process.env.PATH,
+          TMPDIR: TEMP_DIR,
+          TEMP: TEMP_DIR,
+          HOME: process.env.HOME || '/app'
+        }
+      });
+      
+      console.log('Fallback yt-dlp output:', fallbackStdout);
+      
+      // Check for subtitle files again
+      const fallbackFiles = await fs.readdir(videoTempDir);
+      const fallbackSrtFiles = fallbackFiles.filter(f => f.includes(videoId) && f.endsWith('.srt'));
+      
+      if (fallbackSrtFiles.length > 0) {
+        const srtContent = await fs.readFile(path.join(videoTempDir, fallbackSrtFiles[0]), 'utf8');
+        const videoTitle = await getYouTubeTitle(videoId) || 'Unknown Title';
+        
+        const cleaned = srtContent
+          .replace(/^\d+\n/gm, '')
+          .replace(/\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n/g, '')
+          .replace(/^(?:\d{1,2}:)?\d{1,2}:\d{2}\n/gm, '')
+          .replace(/<[^>]*>/g, '')
+          .replace(/\[.*?\]/g, '')
+          .replace(/\d{2}:\d{2}:\d{2}\.\d{3}/g, '')
+          .replace(/\n+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/\d{1,2}:\d{2}\s+/g, '')
+          .replace(/(\b\w+(?:\s+\w+){0,7}\b)\s+\1/g, '$1')
+          .replace(/(.{10,50})\s+\1/g, '$1')
+          .trim();
+          
+        // Clean up files
+        for (const file of fallbackSrtFiles) {
+          await fs.unlink(path.join(videoTempDir, file)).catch(() => {});
+        }
+        await fs.rm(videoTempDir, { recursive: true, force: true }).catch(() => {});
+
+        if (cleaned.length > 100) {
+          console.log(`Fallback method succeeded! Extracted transcript (${cleaned.length} chars)`);
+          
+          if (CACHE_TRANSCRIPTS) {
+            await saveTranscript(videoId, cleaned, videoTitle);
+          }
+          
+          return cleaned;
+        }
+      }
+    } catch (fallbackError) {
+      console.log('Fallback method also failed:', fallbackError.message);
+    }
+    
+    console.log('All transcript extraction methods exhausted');
     return null;
   } catch (error) {
     console.error('Fatal error in transcript extraction:', error);

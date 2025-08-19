@@ -1,4 +1,4 @@
-worker: node api/listener.js
+web: node api/listener.js
 
 
 
