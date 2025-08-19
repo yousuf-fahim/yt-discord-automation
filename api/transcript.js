@@ -182,17 +182,20 @@ async function getTranscript(videoId) {
           
           // Try different command variations with anti-bot measures
           const cmdVariations = [
-            // Method 1: Simple approach first (most reliable)
-            `${ytdlpCmd} --no-download --get-title --no-playlist -- "https://www.youtube.com/watch?v=${videoId}"`,
+            // Method 1: iOS client (often works when others fail)
+            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=ios" --sleep-requests 1 -- "https://www.youtube.com/watch?v=${videoId}"`,
             
-            // Method 2: TV embedded client (often bypasses restrictions)  
-            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=tv_embedded" --sleep-requests 2 -- "https://www.youtube.com/watch?v=${videoId}"`,
+            // Method 2: TV embedded client with aggressive bypassing
+            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=tv_embedded" --user-agent "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)" --sleep-requests 2 -- "https://www.youtube.com/watch?v=${videoId}"`,
             
-            // Method 3: Android client with minimal options
-            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=android" --sleep-requests 3 -- "https://www.youtube.com/watch?v=${videoId}"`,
+            // Method 3: Android TV client (different from regular Android)
+            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=android_tv" --sleep-requests 2 -- "https://www.youtube.com/watch?v=${videoId}"`,
             
-            // Method 4: Web client as last resort
-            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=web" --sleep-requests 5 -- "https://www.youtube.com/watch?v=${videoId}"`
+            // Method 4: Media Connect client (for smart TVs)
+            `${ytdlpCmd} --no-download --get-title --no-playlist --extractor-args "youtube:player_client=mediaconnect" --sleep-requests 3 -- "https://www.youtube.com/watch?v=${videoId}"`,
+            
+            // Method 5: Simple approach as fallback
+            `${ytdlpCmd} --no-download --get-title --no-playlist -- "https://www.youtube.com/watch?v=${videoId}"`
           ];
           
           // Try each command variation
@@ -290,17 +293,20 @@ async function getTranscript(videoId) {
 
     // Try different methods to get transcript with anti-bot measures
     const methods = [
-      // Method 1: Simple approach first (most reliable)
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
+      // Method 1: iOS client (most reliable against bot detection)
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=ios" --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
       
-      // Method 2: TV embedded client (often bypasses restrictions)
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=tv_embedded" --sleep-requests 2 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
+      // Method 2: TV embedded client with iOS user agent
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=tv_embedded" --user-agent "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)" --sleep-requests 2 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
       
-      // Method 3: Android client with minimal options
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=android" --sleep-requests 3 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
+      // Method 3: Android TV client (different from regular Android)
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=android_tv" --sleep-requests 2 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
       
-      // Method 4: Web client as last resort
-      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=web" --sleep-requests 5 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`
+      // Method 4: Media Connect client (for smart TVs)
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --write-auto-sub --convert-subs srt --extractor-args "youtube:player_client=mediaconnect" --sleep-requests 3 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`,
+      
+      // Method 5: Simple approach as final fallback
+      `${ytdlpCmd} --cache-dir "${TEMP_DIR}" --sub-lang en --write-auto-sub --convert-subs srt --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`
     ];
 
     for (const cmd of methods) {
@@ -401,7 +407,7 @@ async function getTranscript(videoId) {
     console.log('All primary methods failed, trying fallback with extreme rate limiting...');
     
     try {
-      const fallbackCmd = `${ytdlpCmd} --write-auto-sub --convert-subs srt --no-playlist --ignore-config --no-cache-dir --sleep-requests 15 --sleep-interval 5 --user-agent "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`;
+      const fallbackCmd = `${ytdlpCmd} --write-auto-sub --convert-subs srt --no-playlist --ignore-config --no-cache-dir --extractor-args "youtube:player_client=ios" --user-agent "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)" --sleep-requests 10 --sleep-interval 3 --output "${videoTempDir}/%(title)s [%(id)s].%(ext)s" --skip-download -- "https://www.youtube.com/watch?v=${videoId}"`;
       
       console.log(`Trying fallback command: ${fallbackCmd}`);
       const { stdout: fallbackStdout } = await execAsync(fallbackCmd, { 
@@ -458,6 +464,42 @@ async function getTranscript(videoId) {
       }
     } catch (fallbackError) {
       console.log('Fallback method also failed:', fallbackError.message);
+    }
+    
+    console.log('All yt-dlp methods failed, trying youtube-transcript package as final fallback...');
+    
+    // Final fallback: use youtube-transcript npm package
+    try {
+      const { YoutubeTranscript } = require('youtube-transcript');
+      console.log('Attempting youtube-transcript package extraction...');
+      
+      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId, {
+        lang: 'en',
+        country: 'US'
+      });
+      
+      if (transcriptData && transcriptData.length > 0) {
+        const cleaned = transcriptData
+          .map(item => item.text)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+          
+        if (cleaned.length > 100) {
+          console.log(`youtube-transcript package succeeded! Extracted transcript (${cleaned.length} chars)`);
+          
+          // Get video title for caching
+          const videoTitle = await getYouTubeTitle(videoId) || 'Unknown Title';
+          
+          if (CACHE_TRANSCRIPTS) {
+            await saveTranscript(videoId, cleaned, videoTitle);
+          }
+          
+          return cleaned;
+        }
+      }
+    } catch (npmError) {
+      console.log('youtube-transcript package also failed:', npmError.message);
     }
     
     console.log('All transcript extraction methods exhausted');
