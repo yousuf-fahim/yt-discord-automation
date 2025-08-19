@@ -129,6 +129,18 @@ client.on('messageCreate', async (message) => {
         if (!transcript) {
           console.error('Failed to get transcript for video ID:', videoId);
           await message.react('❌');
+          
+          // Provide helpful error message in Heroku environment
+          if (process.env.DYNO) {
+            try {
+              await message.reply({
+                content: `⚠️ **Transcript Extraction Failed**\n\nYouTube is currently blocking transcript access from cloud environments. This is a known issue with YouTube's anti-bot measures.\n\n**Possible solutions:**\n• Try again later (sometimes temporary)\n• Video may not have auto-generated captions\n• Consider using a proxy service for production\n\n*Video ID: ${videoId}*`,
+                flags: ['SuppressNotifications']
+              });
+            } catch (replyError) {
+              console.error('Error sending transcript failure message:', replyError);
+            }
+          }
           return;
         }
         

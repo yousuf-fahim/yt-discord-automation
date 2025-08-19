@@ -500,9 +500,17 @@ async function getTranscript(videoId) {
       }
     } catch (npmError) {
       console.log('youtube-transcript package also failed:', npmError.message);
+      
+      // Check if it's a Heroku/cloud environment issue
+      if (process.env.DYNO) {
+        console.log('⚠️  YouTube appears to be blocking cloud/Heroku IP addresses');
+        console.log('⚠️  This is a known issue with YouTube\'s anti-bot measures');
+        console.log('⚠️  Consider using a proxy service or VPN solution for production');
+      }
     }
     
     console.log('All transcript extraction methods exhausted');
+    console.log('📋 Summary: YouTube is blocking transcript access from this environment');
     return null;
   } catch (error) {
     console.error('Fatal error in transcript extraction:', error);
