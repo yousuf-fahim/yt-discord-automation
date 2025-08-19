@@ -39,6 +39,9 @@ client.once('ready', async () => {
 
 // Message handler
 client.on('messageCreate', async (message) => {
+  // ALWAYS log when ANY message is received for debugging
+  console.log(`🔍 RECEIVED MESSAGE: "${message.content}" in channel: "${message.channel.name}" from: "${message.author.username}"`);
+  console.log(`🔍 Guild: ${message.guild?.id}, Bot: ${message.author.bot}`);
   // Debug logging
   if (DEBUG_MODE) {
     console.log(`Message received in channel: ${message.channel.name}`);
