@@ -1,6 +1,7 @@
 /**
  * Modern Discord Bot Entry Point
  * Uses ServiceManager for better organization and error handling
+ * Updated for Heroku deployment with Node.js only
  */
 
 require('dotenv').config();
