@@ -1,4 +1,4 @@
-worker: node api/listener.js
+worker: node src/main.js
 
 
 
