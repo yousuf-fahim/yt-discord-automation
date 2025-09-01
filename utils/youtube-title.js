@@ -1,7 +1,6 @@
 /**
  * Utility to fetch YouTube video title without using the YouTube API
  */
-const fetch = require('node-fetch');
 
 /**
  * Fetches the title of a YouTube video by scraping the page
@@ -13,7 +12,16 @@ async function getYouTubeTitle(videoId) {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     console.log(`Fetching title for ${url} using page scraping...`);
     
-    const response = await fetch(url, {
+    // Use built-in fetch (Node.js 18+) or require node-fetch for older versions
+    let fetchFunction;
+    try {
+      fetchFunction = globalThis.fetch || require('node-fetch');
+    } catch (error) {
+      console.log('Fetch not available, skipping title extraction');
+      return null;
+    }
+    
+    const response = await fetchFunction(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
       }
@@ -23,7 +31,7 @@ async function getYouTubeTitle(videoId) {
       console.log(`Failed to fetch YouTube page: ${response.status} ${response.statusText}`);
       return null;
     }
-    
+
     const html = await response.text();
     
     // Try several patterns to extract the title
