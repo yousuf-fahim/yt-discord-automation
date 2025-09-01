@@ -5,10 +5,26 @@ A Node.js bot that automatically extracts transcripts from YouTube videos posted
 ## Features
 
 - 🔍 Monitors Discord channels for YouTube links
-- 📝 Extracts video transcripts using yt-dlp (primary) or Tactiq.io via Puppeteer (fallback)
+- 📝 Extracts video transcripts using reliable youtube-transcript-api
 - 🤖 Generates AI summaries using OpenAI with customizable prompts
 - 📊 Creates daily reports of all summarized videos
-- ⚙️ Configurable via environment variables and pinned Discord messages
+- ⚙️ Modern ServiceManager architecture with dependency injection
+- 🏗️ Configurable via environment variables and pinned Discord messages
+
+## Architecture
+
+### Modern Architecture (src/)
+- **ServiceManager**: Dependency injection and service lifecycle management
+- **Discord Service**: Bot interactions and message handling
+- **Transcript Service**: YouTube transcript extraction using youtube-transcript-api
+- **Summary Service**: OpenAI integration for content summarization
+- **Report Service**: Daily report generation and scheduling
+- **Cache Service**: Intelligent caching for performance
+
+### Entry Points
+- **Development**: `npm run dev` (with nodemon auto-restart)
+- **Production**: `npm start`
+- **Heroku**: Automatic via Procfile
 
 ## Setup
 
@@ -18,14 +34,32 @@ A Node.js bot that automatically extracts transcripts from YouTube videos posted
 - Discord Bot Token with Message Content intent enabled
 - OpenAI API Key
 - YouTube API Key (optional, for video title fetching)
-- yt-dlp installed (`brew install yt-dlp` on macOS, `apt install yt-dlp` on Ubuntu)
+- Python 3 with `youtube-transcript-api` package (`pip install youtube-transcript-api`)
+
+### Local Development
+
+```bash
+# Install dependencies
+npm install
+
+# Install Python package for transcript extraction
+pip install youtube-transcript-api
+
+# Start development server (with auto-restart)
+npm run dev
+
+# Or start production mode
+npm start
+```
 
 ### Cache Management
 
-The bot caches transcripts and summaries to improve performance and reduce API calls. To manage the cache:
+The bot automatically caches transcripts and summaries through the CacheService to improve performance and reduce API calls. Cache is managed through the ServiceManager architecture.
+
+For manual cache management (using legacy tools):
 
 ```bash
-# View cache statistics
+# View cache statistics  
 node api/manage-cache.js stats
 
 # Clean cache (remove files older than 30 days or if total size exceeds 500MB)
@@ -35,7 +69,7 @@ node api/manage-cache.js clean
 node api/manage-cache.js clean 15 200
 ```
 
-By default, the cache cleaning is automatically run daily to prevent excessive disk usage.
+The modern architecture includes intelligent cache management built into the services.
 - Discord server with appropriate channels set up
 
 ### Discord Channel Structure

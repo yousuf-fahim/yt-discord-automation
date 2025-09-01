@@ -1,0 +1,17 @@
+{
+  "watch": ["src", "utils", "api"],
+  "ignore": [
+    "cache/**/*",
+    "temp/**/*",
+    "logs/**/*",
+    "*.log",
+    "*.json.tmp",
+    "node_modules/**/*",
+    ".git/**/*"
+  ],
+  "ext": "js,mjs",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "verbose": false
+}

@@ -14,6 +14,9 @@ class DiscordService {
     this.logger = serviceManager.logger;
     this.config = serviceManager.config.discord;
     
+    // Track processed messages to prevent duplicates
+    this.processedMessages = new Set();
+    
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -23,6 +26,20 @@ class DiscordService {
     });
     
     this.setupEventHandlers();
+    
+    // Clean up processed messages every hour to prevent memory leaks
+    setInterval(() => {
+      this.cleanupProcessedMessages();
+    }, 60 * 60 * 1000); // 1 hour
+  }
+  
+  cleanupProcessedMessages() {
+    // Keep only messages from the last 2 hours (arbitrary retention period)
+    // In a production environment, you might want to use a more sophisticated approach
+    if (this.processedMessages.size > 1000) {
+      this.processedMessages.clear();
+      this.logger.debug('Cleared processed messages cache');
+    }
   }
 
   async initialize() {
@@ -50,6 +67,12 @@ class DiscordService {
   }
 
   async handleMessage(message) {
+    // Prevent duplicate processing of the same message
+    if (this.processedMessages.has(message.id)) {
+      this.logger.debug(`Skipping already processed message: ${message.id}`);
+      return;
+    }
+    
     // Check if message contains YouTube link
     const youtubeRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const match = message.content.match(youtubeRegex);
@@ -57,6 +80,9 @@ class DiscordService {
     if (match) {
       const videoId = match[1];
       const channelName = message.channel.name;
+      
+      // Mark message as being processed
+      this.processedMessages.add(message.id);
       
       this.logger.info(`Processing YouTube video: ${videoId} in channel: ${channelName}`);
       

@@ -13,6 +13,9 @@ cache/
 temp/
 test-transcript-output.txt
 
+# Deprecated old architecture (use src/ instead)
+api/
+
 # Logs
 logs
 *.log

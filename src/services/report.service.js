@@ -28,12 +28,18 @@ class ReportService {
 
       const report = this.buildReport(summaries);
       
+      // Wrap in proper format
+      const reportData = {
+        data: report,
+        timestamp: Date.now()
+      };
+      
       // Cache the report
       const reportKey = `daily_report_${new Date().toISOString().split('T')[0]}`;
-      await this.cache.set(reportKey, report);
+      await this.cache.set(reportKey, reportData);
       
       this.logger.info(`Daily report generated with ${summaries.length} videos`);
-      return report;
+      return reportData;
       
     } catch (error) {
       this.logger.error('Daily report generation failed', error);
@@ -175,9 +181,14 @@ class ReportService {
 
   generateEmptyReport() {
     const date = new Date().toLocaleDateString();
-    return `📊 **Daily YouTube Summary Report - ${date}**\n\n` +
+    const reportText = `📊 **Daily YouTube Summary Report - ${date}**\n\n` +
            `No videos were processed in the last 24 hours.\n\n` +
            `📅 Generated on ${new Date().toLocaleString()}`;
+           
+    return {
+      data: reportText,
+      timestamp: Date.now()
+    };
   }
 
   async healthCheck() {
