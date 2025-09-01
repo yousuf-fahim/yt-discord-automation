@@ -155,7 +155,18 @@ except Exception as e:
             reject(new Error(`Failed to parse transcript response: ${parseError.message}`));
           }
         } else {
-          reject(new Error(`Python process failed (code ${code}): ${errorOutput || 'Unknown error'}`));
+          // Try to parse error output as JSON first
+          try {
+            const errorResult = JSON.parse(output);
+            if (errorResult.error_type === 'RequestBlocked') {
+              reject(new Error(`YouTube blocked request: ${errorResult.details || errorResult.error}`));
+            } else {
+              reject(new Error(`${errorResult.error_type || 'Python Error'}: ${errorResult.error}`));
+            }
+          } catch (parseError) {
+            // Fallback to original error handling
+            reject(new Error(`Python process failed (code ${code}): ${errorOutput || output || 'Unknown error'}`));
+          }
         }
       });
 
@@ -174,11 +185,15 @@ import json
 import sys
 import traceback
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import RequestBlocked, VideoUnavailable, TranscriptsDisabled, NoTranscriptFound
 ${proxyConfig ? 'from youtube_transcript_api.proxies import GenericProxyConfig' : ''}
 
 try:
-    # Try to get transcript using static methods
-    transcript_list = YouTubeTranscriptApi.list_transcripts("${videoId}")
+    # Create API instance (required for v1.2.2+)
+    api = YouTubeTranscriptApi()
+    
+    # Get transcript list
+    transcript_list = api.list("${videoId}")
     
     # Find best available transcript
     try:
@@ -210,6 +225,27 @@ try:
     
     print(json.dumps(result))
 
+except RequestBlocked as e:
+    result = {
+        "success": False,
+        "error": "YouTube blocked request from cloud provider IP",
+        "error_type": "RequestBlocked",
+        "details": "YouTube blocks requests from cloud providers like Heroku. Consider using a proxy or alternative deployment.",
+        "traceback": traceback.format_exc(),
+        "video_id": "${videoId}"
+    }
+    print(json.dumps(result))
+    sys.exit(1)
+except (VideoUnavailable, TranscriptsDisabled, NoTranscriptFound) as e:
+    result = {
+        "success": False,
+        "error": str(e),
+        "error_type": type(e).__name__,
+        "traceback": traceback.format_exc(),
+        "video_id": "${videoId}"
+    }
+    print(json.dumps(result))
+    sys.exit(1)
 except Exception as e:
     result = {
         "success": False,
