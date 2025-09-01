@@ -47,8 +47,12 @@ import sys
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
     print("DEPENDENCY_OK")
+    print(f"Python version: {sys.version}")
 except ImportError as e:
     print(f"DEPENDENCY_MISSING: {e}")
+    sys.exit(1)
+except Exception as e:
+    print(f"ERROR: {e}")
     sys.exit(1)
 `;
 
@@ -168,21 +172,13 @@ except ImportError as e:
     return `
 import json
 import sys
+import traceback
 from youtube_transcript_api import YouTubeTranscriptApi
 ${proxyConfig ? 'from youtube_transcript_api.proxies import GenericProxyConfig' : ''}
 
 try:
-    # Configure proxy if provided
-    ${proxyConfig ? `
-    proxy_config = GenericProxyConfig(
-        http_url="${proxyConfig.http}",
-        https_url="${proxyConfig.https}"
-    )
-    api = YouTubeTranscriptApi(proxy_config=proxy_config)
-    ` : 'api = YouTubeTranscriptApi()'}
-    
-    # Try to get transcript
-    transcript_list = api.list("${videoId}")
+    # Try to get transcript using static methods
+    transcript_list = YouTubeTranscriptApi.list_transcripts("${videoId}")
     
     # Find best available transcript
     try:
@@ -191,14 +187,14 @@ try:
         # Fallback to any available transcript
         available_transcripts = list(transcript_list)
         if not available_transcripts:
-            raise Exception("No transcripts available")
+            raise Exception("No transcripts available for this video")
         transcript = available_transcripts[0]
     
     # Fetch the transcript data
     transcript_data = transcript.fetch()
     
-    # Convert to text
-    text_content = " ".join([item.text for item in transcript_data])
+    # Convert to text - fix the syntax
+    text_content = " ".join([entry['text'] for entry in transcript_data])
     
     # Clean up text
     text_content = text_content.replace("\\n", " ").strip()
@@ -218,6 +214,8 @@ except Exception as e:
     result = {
         "success": False,
         "error": str(e),
+        "error_type": type(e).__name__,
+        "traceback": traceback.format_exc(),
         "video_id": "${videoId}"
     }
     print(json.dumps(result))

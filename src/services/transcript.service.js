@@ -47,16 +47,8 @@ class TranscriptService {
     } catch (error) {
       this.logger.error('Transcript extraction failed', error);
       
-      // Try fallback to existing methods if available
-      try {
-        const legacyTranscript = require('../../api/transcript');
-        if (legacyTranscript && legacyTranscript.getTranscript) {
-          this.logger.info('Attempting legacy fallback...');
-          return await legacyTranscript.getTranscript(videoId);
-        }
-      } catch (legacyError) {
-        this.logger.warn('Legacy fallback not available');
-      }
+      // Legacy fallback disabled - using only modern youtube-transcript-api
+      this.logger.warn('Transcript extraction failed - no fallback available');
       
       return null;
     }
