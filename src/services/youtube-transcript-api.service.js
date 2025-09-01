@@ -191,11 +191,10 @@ ${proxyConfig ? 'from youtube_transcript_api.proxies import GenericProxyConfig' 
 try:
     # Configure proxy if available
     ${proxyConfig ? `
+    proxy_url = "http://${proxyConfig.username}:${proxyConfig.password}@${proxyConfig.host}:${proxyConfig.port}"
     proxy_config = GenericProxyConfig(
-        http_proxy="${proxyConfig.host}:${proxyConfig.port}",
-        https_proxy="${proxyConfig.host}:${proxyConfig.port}",
-        username="${proxyConfig.username}",
-        password="${proxyConfig.password}"
+        http_url=proxy_url,
+        https_url=proxy_url
     )
     # Create API instance with proxy
     api = YouTubeTranscriptApi(proxies=proxy_config)
