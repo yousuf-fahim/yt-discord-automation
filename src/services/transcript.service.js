@@ -18,9 +18,11 @@ class TranscriptService {
       cacheEnabled: true,
       retryAttempts: 3,
       timeout: 30000,
-      proxyConfig: process.env.PROXY_URL ? {
-        http: process.env.PROXY_URL,
-        https: process.env.PROXY_URL
+      proxyConfig: process.env.PROXY_HOST ? {
+        host: process.env.PROXY_HOST,
+        port: process.env.PROXY_PORT || '31280',
+        username: process.env.PROXY_USERNAME,
+        password: process.env.PROXY_PASSWORD
       } : null
     });
   }

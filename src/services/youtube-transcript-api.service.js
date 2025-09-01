@@ -189,8 +189,20 @@ from youtube_transcript_api._errors import RequestBlocked, VideoUnavailable, Tra
 ${proxyConfig ? 'from youtube_transcript_api.proxies import GenericProxyConfig' : ''}
 
 try:
-    # Create API instance (required for v1.2.2+)
+    # Configure proxy if available
+    ${proxyConfig ? `
+    proxy_config = GenericProxyConfig(
+        http_proxy="${proxyConfig.host}:${proxyConfig.port}",
+        https_proxy="${proxyConfig.host}:${proxyConfig.port}",
+        username="${proxyConfig.username}",
+        password="${proxyConfig.password}"
+    )
+    # Create API instance with proxy
+    api = YouTubeTranscriptApi(proxies=proxy_config)
+    ` : `
+    # Create API instance without proxy
     api = YouTubeTranscriptApi()
+    `}
     
     # Get transcript list
     transcript_list = api.list("${videoId}")
