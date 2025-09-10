@@ -124,9 +124,21 @@ class DiscordService {
   }
 
   extractTitleFromMessage(content) {
-    // Simple title extraction - could be enhanced
+    // Try to extract a title from the message content (line without YouTube URL)
+    if (!content) return null;
+    
     const lines = content.split('\n');
-    return lines.find(line => line.trim() && !line.includes('youtube.com') && !line.includes('youtu.be')) || null;
+    const titleLine = lines.find(line => {
+      const trimmed = line.trim();
+      return trimmed && 
+             trimmed.length > 3 && // Must be meaningful length
+             !trimmed.includes('youtube.com') && 
+             !trimmed.includes('youtu.be') &&
+             !trimmed.match(/^[-\s]*$/) && // Not just dashes/spaces
+             !trimmed.match(/^[#@<>]*$/) // Not just symbols
+    });
+    
+    return titleLine ? titleLine.trim() : null;
   }
 
   async getVideoTitle(videoId, messageContent) {
