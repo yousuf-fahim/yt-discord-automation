@@ -618,13 +618,22 @@ ${transcript}`;
 
   async generateCustomDailyReport(summaries, customPrompt) {
     try {
-      // Prepare summaries data for the prompt
+      // CRITICAL FIX: If no summaries, return empty report immediately
+      if (!summaries || summaries.length === 0) {
+        console.log('🚨 No summaries found - returning empty report instead of asking OpenAI');
+        const emptyReport = this.report.generateEmptyReport();
+        return emptyReport.data; // Return just the text content
+      }
+
+      // Prepare summaries data for the prompt (using correct field names)
       const summariesData = summaries.map(summary => ({
-        title: summary.title,
-        content: summary.content,
-        url: summary.url,
+        title: summary.videoTitle || summary.title,
+        content: summary.summaryContent || summary.content,
+        url: summary.videoUrl || summary.url,
         timestamp: summary.timestamp
       }));
+
+      console.log(`📊 Generating custom report with ${summariesData.length} summaries`);
 
       const summariesText = summariesData.map((summary, index) => 
         `${index + 1}. ${summary.title}\nContent: ${summary.content}\nURL: ${summary.url}\nTime: ${new Date(summary.timestamp).toLocaleString()}\n`
@@ -636,8 +645,10 @@ ${transcript}`;
       return await this.summary.generateSummary(summariesText, 'Daily Report', '', prompt);
     } catch (error) {
       this.logger.error('Error generating custom daily report', error);
+      console.error('🚨 Custom report generation failed, using fallback:', error);
       // Fallback to default report format
-      return this.report.buildReport(summaries);
+      const fallbackReport = this.report.buildReport(summaries);
+      return fallbackReport.data; // Return just the text content
     }
   }
 
