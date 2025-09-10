@@ -79,7 +79,8 @@ async function getYouTubeTitle(videoId) {
             /^[\d\s\.\,K]+$/.test(title) ||     // Numbers, spaces, K, dots, commas only
             /^[^\w]{2,}$/.test(title) ||        // Only symbols/punctuation
             /^@[\w-]+$/.test(title) ||          // Channel handles like @username
-            /^[\w-]+\s*-\s*YouTube$/.test(title)) { // Channel - YouTube format
+            /^[\w-]+\s*-\s*YouTube$/.test(title) || // Channel - YouTube format
+            /^(Top comments|Comments|Related videos|More videos)$/i.test(title)) { // YouTube page elements
           console.log(`⚠️ Skipping invalid title: "${title}"`);
           continue;
         }

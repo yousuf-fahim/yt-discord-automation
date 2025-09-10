@@ -150,7 +150,6 @@ class DiscordService {
       const { getYouTubeTitle } = require('../../utils/youtube-title');
       const scrapedTitle = await getYouTubeTitle(videoId);
       console.log(`🔍 Scraped title result: "${scrapedTitle}"`);
-      this.logger.info(`Scraped title for ${videoId}: ${scrapedTitle}`);
       if (scrapedTitle) {
         const sanitized = this.sanitizeFilename(scrapedTitle);
         console.log(`✅ Using scraped title: "${sanitized}"`);
@@ -161,7 +160,6 @@ class DiscordService {
       console.log(`🔄 Falling back to message extraction...`);
       const extractedTitle = this.extractTitleFromMessage(messageContent);
       console.log(`📑 Extracted from message: "${extractedTitle}"`);
-      this.logger.info(`Extracted title from message: ${extractedTitle}`);
       if (extractedTitle) {
         const sanitized = this.sanitizeFilename(extractedTitle);
         console.log(`✅ Using extracted title: "${sanitized}"`);

@@ -104,7 +104,6 @@ Set up the following channels in your Discord server:
    OPENAI_MODEL=gpt-4-turbo
    
    # YouTube Configuration
-   YOUTUBE_API_KEY=your_youtube_api_key
    YOUTUBE_TRANSCRIPT_IO_TOKEN=your_youtube_transcript_io_api_token
 
    # Channel Prefix Configuration
