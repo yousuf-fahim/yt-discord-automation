@@ -143,25 +143,37 @@ class DiscordService {
 
   async getVideoTitle(videoId, messageContent) {
     try {
+      console.log(`🎯 Getting title for video ${videoId}`);
+      console.log(`📝 Message content: "${messageContent}"`);
+      
       // First try to get title from YouTube page scraping
       const { getYouTubeTitle } = require('../../utils/youtube-title');
       const scrapedTitle = await getYouTubeTitle(videoId);
+      console.log(`🔍 Scraped title result: "${scrapedTitle}"`);
       this.logger.info(`Scraped title for ${videoId}: ${scrapedTitle}`);
       if (scrapedTitle) {
-        return this.sanitizeFilename(scrapedTitle);
+        const sanitized = this.sanitizeFilename(scrapedTitle);
+        console.log(`✅ Using scraped title: "${sanitized}"`);
+        return sanitized;
       }
       
       // Fallback to extracting from message
+      console.log(`🔄 Falling back to message extraction...`);
       const extractedTitle = this.extractTitleFromMessage(messageContent);
+      console.log(`📑 Extracted from message: "${extractedTitle}"`);
       this.logger.info(`Extracted title from message: ${extractedTitle}`);
       if (extractedTitle) {
-        return this.sanitizeFilename(extractedTitle);
+        const sanitized = this.sanitizeFilename(extractedTitle);
+        console.log(`✅ Using extracted title: "${sanitized}"`);
+        return sanitized;
       }
       
       // Final fallback to video ID
+      console.log(`⚠️ Using video ID fallback for ${videoId}`);
       this.logger.info(`Using fallback title for ${videoId}`);
       return `YouTube_Video_${videoId}`;
     } catch (error) {
+      console.log(`❌ Error in getVideoTitle: ${error.message}`);
       this.logger.error('Error getting video title', error);
       return `YouTube_Video_${videoId}`;
     }

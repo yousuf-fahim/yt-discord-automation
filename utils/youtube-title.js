@@ -72,12 +72,14 @@ async function getYouTubeTitle(videoId) {
         
         console.log(`🔍 Pattern matched: "${title}"`);
         
-        // Filter out generic YouTube titles and short/numeric-only titles
+        // Filter out generic YouTube titles, short/numeric-only titles, and channel names
         if (title === '- YouTube' || 
             title === 'YouTube' || 
             title.length < 10 || 
-            /^[\d\s\.\,K]+$/.test(title) ||  // Numbers, spaces, K, dots, commas only
-            /^[^\w]{2,}$/.test(title)) {     // Only symbols/punctuation
+            /^[\d\s\.\,K]+$/.test(title) ||     // Numbers, spaces, K, dots, commas only
+            /^[^\w]{2,}$/.test(title) ||        // Only symbols/punctuation
+            /^@[\w-]+$/.test(title) ||          // Channel handles like @username
+            /^[\w-]+\s*-\s*YouTube$/.test(title)) { // Channel - YouTube format
           console.log(`⚠️ Skipping invalid title: "${title}"`);
           continue;
         }
