@@ -34,23 +34,36 @@ async function getYouTubeTitle(videoId) {
 
     const html = await response.text();
     
-    // Try several patterns to extract the title
+    // Try several patterns to extract the title - updated for current YouTube structure
     const patterns = [
+      // New YouTube structure patterns
+      /<meta property="og:title" content="([^"]+)"/i,
+      /<meta name="twitter:title" content="([^"]+)"/i,
+      /"videoDetails":\s*\{[^}]*"title":"([^"]+)"/i,
+      /"title":\s*"([^"]+)"/i,
+      // Legacy patterns as fallback
       /<meta name="title" content="([^"]+)"/i,
-      /<title>([^<]+)<\/title>/i,
-      /"title":"([^"]+)"/i
+      /<title>([^<]+)<\/title>/i
     ];
     
     for (const pattern of patterns) {
       const match = html.match(pattern);
       if (match && match[1]) {
-        const title = match[1]
+        let title = match[1]
           .replace(/&quot;/g, '"')
           .replace(/&amp;/g, '&')
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
           .replace(/&#39;/g, "'")
+          .replace(/\\u0026/g, '&')
+          .replace(/\\"/g, '"')
           .trim();
+        
+        // Filter out generic YouTube titles
+        if (title === '- YouTube' || title === 'YouTube' || title.length < 3) {
+          console.log(`Skipping generic title: "${title}"`);
+          continue;
+        }
         
         console.log(`Found YouTube title: ${title}`);
         return title;
