@@ -146,7 +146,24 @@ class DiscordService {
       console.log(`🎯 Getting title for video ${videoId}`);
       console.log(`📝 Message content: "${messageContent}"`);
       
-      // First try to get title from YouTube page scraping
+      // First try to get title from YouTube Transcript IO API (most reliable)
+      try {
+        const transcriptService = this.serviceManager.getService('transcript');
+        if (transcriptService && transcriptService.transcriptIO) {
+          const apiTitle = await transcriptService.transcriptIO.getVideoTitle(videoId);
+          console.log(`🎬 Transcript API title result: "${apiTitle}"`);
+          if (apiTitle) {
+            const sanitized = this.sanitizeFilename(apiTitle);
+            console.log(`✅ Using Transcript API title: "${sanitized}"`);
+            return sanitized;
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️ Transcript API title failed: ${error.message}`);
+      }
+      
+      // Fallback to page scraping
+      console.log(`🔄 Falling back to page scraping...`);
       const { getYouTubeTitle } = require('../../utils/youtube-title');
       const scrapedTitle = await getYouTubeTitle(videoId);
       console.log(`🔍 Scraped title result: "${scrapedTitle}"`);

@@ -132,6 +132,7 @@ class YouTubeTranscriptIOService {
       // Extract transcript from response
       if (data && data.length > 0) {
         const videoData = data[0];
+        console.log('API response structure:', JSON.stringify(videoData, null, 2).substring(0, 500) + '...');
         
         // Extract transcript from tracks
         if (videoData.tracks && videoData.tracks.length > 0) {
@@ -173,6 +174,69 @@ class YouTubeTranscriptIOService {
     }
     
     return String(transcriptData);
+  }
+
+  /**
+   * Get video title from YouTube Transcript IO API
+   * @param {string} videoId - The YouTube video ID
+   * @returns {Promise<string|null>} - The video title or null if not found
+   */
+  async getVideoTitle(videoId) {
+    if (!this.config.apiToken) {
+      console.log('⚠️ YouTube Transcript IO API token not configured');
+      return null;
+    }
+
+    if (!videoId) {
+      console.log('⚠️ Video ID is required');
+      return null;
+    }
+
+    try {
+      console.log(`🎬 Fetching title from YouTube Transcript IO for ${videoId}...`);
+      
+      const response = await fetch(`${this.config.baseUrl}/transcripts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + this.config.apiToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ids: [videoId]
+        })
+      });
+
+      if (!response.ok) {
+        console.log(`❌ Title API request failed: ${response.status} ${response.statusText}`);
+        return null;
+      }
+
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        const videoData = data[0];
+        
+        // Try different possible title fields
+        const title = videoData.title || 
+                     videoData.video_title || 
+                     videoData.name ||
+                     (videoData.metadata && videoData.metadata.title);
+        
+        if (title && title.length > 0) {
+          console.log(`✅ YouTube Transcript IO title: "${title}"`);
+          return title;
+        }
+        
+        console.log('❌ No title found in API response');
+        console.log('Available fields:', Object.keys(videoData));
+      }
+      
+      return null;
+      
+    } catch (error) {
+      console.error('❌ Error fetching title from YouTube Transcript IO:', error.message);
+      return null;
+    }
   }
 
   getCachedTranscript(videoId) {
