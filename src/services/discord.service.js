@@ -52,13 +52,12 @@ class DiscordService {
       
       await this.client.login(this.config.token);
       
-      // Initialize command service after Discord client is ready
-      await this.initializeCommands();
-      
       console.log('✅ Discord service initialized');
       
       // Schedule daily report generation
       this.scheduleDailyReports();
+      
+      // Note: Slash commands are registered in the 'ready' event handler
       
     } catch (error) {
       console.error('❌ Failed to initialize Discord service:', error);
@@ -100,8 +99,11 @@ class DiscordService {
   }
 
   setupEventHandlers() {
-    this.client.once('ready', () => {
+    this.client.once('ready', async () => {
       this.logger.info(`Discord bot logged in as ${this.client.user.tag}`);
+      
+      // Register slash commands after client is ready
+      await this.initializeCommands();
     });
 
     this.client.on('messageCreate', async (message) => {
