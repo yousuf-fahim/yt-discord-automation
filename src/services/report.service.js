@@ -167,52 +167,6 @@ class ReportService {
     }
   }
 
-  buildReport(summaries) {
-    const date = new Date().toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-    
-    let report = `📊 **Daily YouTube Summary Report - ${date}**\n\n`;
-    report += `📈 Total videos processed: **${summaries.length}**\n\n`;
-    
-    if (summaries.length > 0) {
-      summaries.forEach((summary, index) => {
-        const timeStr = summary.timestamp ? 
-          new Date(summary.timestamp).toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          }) : 'Unknown time';
-        
-        report += `**${index + 1}. ${summary.title || 'Unknown Video'}**\n`;
-        report += `🕒 Processed at: ${timeStr}\n`;
-        
-        // Add summary preview (first 200 chars)
-        if (summary.content) {
-          const preview = summary.content.length > 200 ? 
-            summary.content.substring(0, 200) + '...' : 
-            summary.content;
-          report += `📝 ${preview}\n`;
-        }
-        
-        if (summary.url) {
-          report += `🔗 ${summary.url}\n`;
-        }
-        report += '\n';
-      });
-    }
-    
-    report += `\n📅 Generated on ${new Date().toLocaleString('en-US', {
-      timeZone: 'Europe/Paris',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZoneName: 'short'
-    })}`;
-    
-    return report;
-  }
 
   buildReport(summaries) {
     const date = new Date().toLocaleDateString('en-US', {

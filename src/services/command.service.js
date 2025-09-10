@@ -173,6 +173,99 @@ class CommandService {
     });
   }
 
+  registerTriggerReportCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('trigger-report')
+      .setDescription('Manually trigger daily report generation')
+      .addStringOption(option =>
+        option.setName('channel')
+          .setDescription('Which report to trigger')
+          .setRequired(false)
+          .addChoices(
+            { name: 'All Reports', value: 'all' },
+            { name: 'Report 1', value: '1' },
+            { name: 'Report 2', value: '2' },
+            { name: 'Report 3', value: '3' }
+          )
+      );
+    
+    this.commands.set('trigger-report', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const channelOption = interaction.options.getString('channel') || 'all';
+          console.log(`📊 Triggering daily report, channel: ${channelOption}`);
+          
+          const reportService = this.serviceManager.getService('report');
+          const discordService = this.serviceManager.getService('discord');
+          
+          if (!reportService || !discordService) {
+            throw new Error('Report or Discord service not available');
+          }
+          
+          let results = [];
+          
+          if (channelOption === 'all') {
+            // Trigger all reports
+            try {
+              await reportService.sendDailyReport(discordService);
+              results.push('✅ All Reports: Successfully triggered');
+            } catch (error) {
+              console.error('❌ All reports error:', error);
+              results.push(`❌ All Reports: ${error.message}`);
+            }
+          } else {
+            // Trigger specific report
+            try {
+              const reportNumber = parseInt(channelOption);
+              const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+              
+              if (!guild) {
+                throw new Error('Guild not found');
+              }
+              
+              // Generate report
+              const report = await reportService.generateDailyReport();
+              
+              // Find the specific daily report channel
+              const reportChannelName = `daily-report${reportNumber > 1 ? `-${reportNumber}` : ''}`;
+              const reportChannel = guild.channels.cache.find(
+                channel => channel.name === reportChannelName
+              );
+              
+              if (!reportChannel) {
+                throw new Error(`Channel ${reportChannelName} not found`);
+              }
+              
+              // Send report to specific channel
+              await discordService.sendLongMessage(reportChannel, report.data);
+              results.push(`✅ Report ${reportNumber}: Successfully sent to ${reportChannelName}`);
+              
+            } catch (error) {
+              console.error(`❌ Report ${channelOption} error:`, error);
+              results.push(`❌ Report ${channelOption}: ${error.message}`);
+            }
+          }
+          
+          // Create response embed
+          const embed = new EmbedBuilder()
+            .setTitle('📊 Daily Report Trigger Results')
+            .setDescription(results.join('\n'))
+            .setColor(results.some(r => r.includes('❌')) ? 0xff6b6b : 0x51cf66)
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Trigger report command error:', error);
+          await interaction.editReply('❌ Error triggering report: ' + error.message);
+        }
+      }
+    });
+  }
+
   registerTestSummaryCommand() {
     const command = new SlashCommandBuilder()
       .setName('test-summary')
