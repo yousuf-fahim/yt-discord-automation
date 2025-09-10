@@ -642,7 +642,8 @@ ${transcript}`;
       // Generate custom report using summary service
       const prompt = `${customPrompt}\n\nRecent YouTube Video Summaries (Last 24 hours):\n${summariesText}`;
       
-      return await this.summary.generateSummary(summariesText, 'Daily Report', '', prompt);
+      const customReport = await this.summary.generateSummary(summariesText, 'Daily Report', '', prompt);
+      return customReport; // Ensure consistent string return type
     } catch (error) {
       this.logger.error('Error generating custom daily report', error);
       console.error('🚨 Custom report generation failed, using fallback:', error);

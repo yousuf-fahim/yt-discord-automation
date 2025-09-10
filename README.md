@@ -1,15 +1,18 @@
 # YouTube to Discord AI Automation Bot
 
-A Node.js bot that automatically extracts transcripts from YouTube videos posted in Discord, generates AI summaries using custom prompts, and creates daily reports.
+A Node.js bot that automatically extracts transcripts from YouTube videos posted in Discord, generates AI summaries using custom prompts, and creates daily reports. Includes comprehensive slash commands for management and debugging.
 
 ## Features
 
 - 🔍 Monitors Discord channels for YouTube links
-- 📝 Extracts video transcripts using reliable youtube-transcript-api
+- 📝 Extracts video transcripts using YouTube Transcript IO API
 - 🤖 Generates AI summaries using OpenAI with customizable prompts
 - 📊 Creates daily reports of all summarized videos
 - ⚙️ Modern ServiceManager architecture with dependency injection
 - 🏗️ Configurable via environment variables and pinned Discord messages
+- 🤖 **12 Comprehensive Slash Commands** for management, debugging, and monitoring
+- 💾 Intelligent cache management with debugging tools
+- 🚨 Robust error handling and empty state management
 
 ## Architecture
 
@@ -188,11 +191,39 @@ For Puppeteer support on Heroku, add the following buildpacks:
    - For each daily report prompt, generates a report using OpenAI
    - Posts the report to `#daily-report`
 
-### Manual Triggers
+## 🤖 Slash Commands
 
-You can manually trigger summary generation or daily reports using:
+The bot includes **12 comprehensive slash commands** for complete system management. For detailed documentation, see [SLASH_COMMANDS.md](SLASH_COMMANDS.md).
 
-```
+### Quick Reference
+
+**System Health & Monitoring:**
+- `/health` - Check all service status
+- `/logs [lines]` - View recent bot activity
+- `/channel-status` - Check monitored channels
+
+**Daily Reports:**
+- `/trigger-report [channel]` - Manually generate reports
+- `/check-summaries [all-dates]` - Verify cached summaries
+
+**Video Processing:**
+- `/test-summary <video-url> [channel]` - Process single video
+- `/transcript-test <video-id>` - Test transcript extraction
+
+**Cache Management:**
+- `/cache-stats [cleanup]` - View storage usage
+- `/debug-cache [pattern]` - Investigate cache issues
+- `/clear-cache <type> [date]` - Reset system state
+
+**Configuration:**
+- `/reload-prompts` - Refresh prompts from Discord
+- `/validate-prompts` - Check prompt configuration
+
+### Manual Triggers (Legacy)
+
+You can also manually trigger operations using legacy scripts:
+
+```bash
 # Generate summary for a specific video
 node api/manual-trigger.js summary dQw4w9WgXcQ "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
