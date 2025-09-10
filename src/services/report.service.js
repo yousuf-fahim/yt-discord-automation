@@ -180,10 +180,16 @@ class ReportService {
   }
 
   generateEmptyReport() {
-    const date = new Date().toLocaleDateString();
-    const reportText = `📊 **Daily YouTube Summary Report - ${date}**\n\n` +
-           `No videos were processed in the last 24 hours.\n\n` +
-           `📅 Generated on ${new Date().toLocaleString()}`;
+    const date = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    const reportText = `📅 **${date}**\n\n` +
+           `No activity today - no YouTube videos were processed in the last 24 hours.\n\n` +
+           `🔄 The bot is running normally and ready to process new videos.`;
            
     return {
       data: reportText,
