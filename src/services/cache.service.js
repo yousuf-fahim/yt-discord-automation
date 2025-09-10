@@ -22,6 +22,39 @@ class CacheService {
     console.log('💾 Cache service initialized');
   }
 
+  async get(key) {
+    try {
+      const filePath = path.join(this.cacheDir, `${key}.json`);
+      const data = await fs.readFile(filePath, 'utf8');
+      return JSON.parse(data);
+    } catch (error) {
+      // File doesn't exist or can't be read
+      return null;
+    }
+  }
+
+  async set(key, value) {
+    try {
+      const filePath = path.join(this.cacheDir, `${key}.json`);
+      await fs.writeFile(filePath, JSON.stringify(value, null, 2));
+      return true;
+    } catch (error) {
+      console.error(`Error setting cache ${key}:`, error);
+      return false;
+    }
+  }
+
+  async delete(key) {
+    try {
+      const filePath = path.join(this.cacheDir, `${key}.json`);
+      await fs.unlink(filePath);
+      return true;
+    } catch (error) {
+      // File doesn't exist
+      return false;
+    }
+  }
+
   async getStats() {
     try {
       const files = await fs.readdir(this.cacheDir);
