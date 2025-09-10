@@ -213,9 +213,46 @@ class CommandService {
           if (!discordService) {
             throw new Error('Discord service not available');
           }
+
+          // Get transcript first
+          const transcriptService = this.serviceManager.getService('transcript');
+          const transcript = await transcriptService.getTranscript(videoId);
+          if (!transcript) {
+            throw new Error('Could not extract transcript');
+          }
+
+          // Get video title
+          const videoTitle = await discordService.getVideoTitle(videoId, videoUrl);
+
+          // Get guild
+          const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+          if (!guild) {
+            throw new Error('Guild not found');
+          }
+
+          // Find the summary and prompt channels
+          const summaryChannelName = `yt-summaries-${channelNum}`;
+          const promptChannelName = `yt-summary-prompt-${channelNum}`;
           
-          // Simulate processing a single summary channel
-          await discordService.processSingleSummaryChannel(channelNum, videoId, videoUrl);
+          const summaryChannel = guild.channels.cache.find(ch => ch.name === summaryChannelName);
+          const promptChannel = guild.channels.cache.find(ch => ch.name === promptChannelName);
+          
+          if (!summaryChannel) {
+            throw new Error(`Summary channel ${summaryChannelName} not found`);
+          }
+          if (!promptChannel) {
+            throw new Error(`Prompt channel ${promptChannelName} not found`);
+          }
+
+          // Process the single summary channel
+          await discordService.processSingleSummaryChannel(
+            summaryChannel, 
+            videoId, 
+            videoTitle, 
+            transcript, 
+            videoUrl, 
+            promptChannel
+          );
           
           const embed = new EmbedBuilder()
             .setTitle('🎯 Test Summary Complete')
@@ -528,6 +565,22 @@ class CommandService {
         }
       }
     });
+  }
+
+  // Helper methods
+  async checkServiceHealth(service) {
+    if (!service) {
+      return { status: 'error', details: 'Service not available' };
+    }
+    
+    try {
+      if (service.healthCheck) {
+        return await service.healthCheck();
+      }
+      return { status: 'ok', details: 'Service running (no health check)' };
+    } catch (error) {
+      return { status: 'error', details: error.message };
+    }
   }
 
   // Helper methods

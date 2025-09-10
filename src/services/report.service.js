@@ -179,6 +179,37 @@ class ReportService {
     return report;
   }
 
+  buildReport(summaries) {
+    const date = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    if (!summaries || summaries.length === 0) {
+      return this.generateEmptyReport();
+    }
+
+    let reportText = `📅 **Daily Report - ${date}**\n\n`;
+    reportText += `📊 **${summaries.length} video${summaries.length !== 1 ? 's' : ''} processed today**\n\n`;
+
+    summaries.forEach((summary, index) => {
+      reportText += `**${index + 1}. ${summary.videoTitle || `Video ${summary.videoId}`}**\n`;
+      if (summary.videoUrl) {
+        reportText += `🔗 ${summary.videoUrl}\n`;
+      }
+      reportText += `📝 ${summary.summaryContent}\n\n`;
+    });
+
+    reportText += `_Generated at ${new Date().toLocaleTimeString()}_`;
+
+    return {
+      data: reportText,
+      timestamp: Date.now()
+    };
+  }
+
   generateEmptyReport() {
     const date = new Date().toLocaleDateString('en-US', {
       weekday: 'long',
