@@ -755,6 +755,37 @@ ${transcript}`;
     }
   }
 
+  async getCustomPromptFromChannel(channelName) {
+    try {
+      // Find the configured guild
+      const guild = this.client.guilds.cache.get(this.config.guildId);
+      if (!guild) {
+        throw new Error(`Guild with ID ${this.config.guildId} not found`);
+      }
+      
+      // Find the prompt channel
+      const promptChannel = guild.channels.cache.find(ch => ch.name === channelName);
+      if (!promptChannel) {
+        throw new Error(`Channel ${channelName} not found`);
+      }
+      
+      // Get pinned messages from the prompt channel
+      const pinnedMessages = await promptChannel.messages.fetchPinned();
+      
+      if (pinnedMessages.size === 0) {
+        return null; // No pinned messages found
+      }
+
+      // Use the first pinned message as the prompt
+      const pinnedMessage = pinnedMessages.first();
+      return pinnedMessage.content;
+      
+    } catch (error) {
+      this.logger.error(`Error getting custom prompt from ${channelName}`, error);
+      throw error;
+    }
+  }
+
   async validateAllPrompts() {
     const results = [];
     
