@@ -42,13 +42,18 @@ async function getYouTubeTitle(videoId) {
     
     // Try several patterns to extract the title - updated for current YouTube structure
     const patterns = [
-      // New YouTube structure patterns
+      // Most reliable patterns first
       /<meta property="og:title" content="([^"]+)"/i,
       /<meta name="twitter:title" content="([^"]+)"/i,
-      /"videoDetails":\s*\{[^}]*"title":"([^"]+)"/i,
-      /"title":\s*"([^"]+)"/i,
-      // Legacy patterns as fallback
       /<meta name="title" content="([^"]+)"/i,
+      // JSON-LD structured data
+      /"name":"([^"]{10,}?)"/i,
+      // Video details in page data
+      /"videoDetails":\s*\{[^}]*"title":"([^"]+)"/i,
+      // Page title (remove - YouTube suffix)
+      /<title>([^<]+?)\s*-\s*YouTube<\/title>/i,
+      // Generic title patterns as last resort
+      /"title":\s*"([^"]{10,}?)"/i,
       /<title>([^<]+)<\/title>/i
     ];
     
@@ -67,9 +72,13 @@ async function getYouTubeTitle(videoId) {
         
         console.log(`🔍 Pattern matched: "${title}"`);
         
-        // Filter out generic YouTube titles
-        if (title === '- YouTube' || title === 'YouTube' || title.length < 3) {
-          console.log(`⚠️ Skipping generic title: "${title}"`);
+        // Filter out generic YouTube titles and short/numeric-only titles
+        if (title === '- YouTube' || 
+            title === 'YouTube' || 
+            title.length < 10 || 
+            /^[\d\s\.\,K]+$/.test(title) ||  // Numbers, spaces, K, dots, commas only
+            /^[^\w]{2,}$/.test(title)) {     // Only symbols/punctuation
+          console.log(`⚠️ Skipping invalid title: "${title}"`);
           continue;
         }
         
