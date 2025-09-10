@@ -56,17 +56,38 @@ class ReportService {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       
+      console.log('🔍 Report Debug - Looking for summaries:');
+      console.log(`📅 Today: ${today.toISOString().split('T')[0]}`);
+      console.log(`📅 Yesterday: ${yesterday.toISOString().split('T')[0]}`);
+      
       // Get all cached summaries from today and yesterday
       const todaySummaries = await this.getSummariesByDate(today);
       const yesterdaySummaries = await this.getSummariesByDate(yesterday);
+      
+      console.log(`📊 Today's summaries: ${todaySummaries.length}`);
+      console.log(`📊 Yesterday's summaries: ${yesterdaySummaries.length}`);
       
       // Combine and filter to last 24 hours
       const allSummaries = [...todaySummaries, ...yesterdaySummaries];
       const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
       
-      return allSummaries.filter(summary => 
-        summary.timestamp && new Date(summary.timestamp) >= last24Hours
-      );
+      console.log(`🕐 24 hours ago: ${last24Hours.toISOString()}`);
+      console.log(`📊 Total summaries before filtering: ${allSummaries.length}`);
+      
+      const filtered = allSummaries.filter(summary => {
+        const hasTimestamp = !!summary.timestamp;
+        const isRecent = hasTimestamp && new Date(summary.timestamp) >= last24Hours;
+        
+        if (!hasTimestamp) {
+          console.log(`⚠️ Summary missing timestamp: ${summary.videoId || 'unknown'}`);
+        }
+        
+        return isRecent;
+      });
+      
+      console.log(`📊 Recent summaries (24hrs): ${filtered.length}`);
+      
+      return filtered;
     } catch (error) {
       this.logger.error('Error getting recent summaries', error);
       return [];
@@ -80,8 +101,11 @@ class ReportService {
       const dateStr = today.toISOString().split('T')[0];
       const summaryKey = `summaries_${dateStr}`;
       
+      console.log(`💾 Saving summary for ${videoId} to cache key: ${summaryKey}`);
+      
       // Get existing summaries for today
       const existingSummaries = await this.getSummariesByDate(today);
+      console.log(`📊 Existing summaries for today: ${existingSummaries.length}`);
       
       // Add new summary with consistent field names
       const newSummary = {
@@ -92,16 +116,27 @@ class ReportService {
         timestamp: new Date().toISOString()
       };
       
+      console.log(`📝 New summary object:`, {
+        videoId: newSummary.videoId,
+        title: newSummary.videoTitle?.substring(0, 50) + '...',
+        contentLength: newSummary.summaryContent?.length,
+        timestamp: newSummary.timestamp
+      });
+      
       // Avoid duplicates
       const filtered = existingSummaries.filter(s => s.videoId !== videoId);
       filtered.push(newSummary);
       
+      console.log(`📊 Total summaries after adding: ${filtered.length}`);
+      
       // Save back to cache
-      await this.cache.set(summaryKey, filtered);
+      const saved = await this.cache.set(summaryKey, filtered);
+      console.log(`💾 Cache save result: ${saved}`);
       
       this.logger.info(`Summary saved for video: ${videoTitle}`);
     } catch (error) {
       this.logger.error('Error saving summary', error);
+      console.error('💥 Save summary error:', error);
     }
   }
 

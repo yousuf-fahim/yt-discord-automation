@@ -43,7 +43,7 @@ class SummaryService {
         : this.buildSummaryPrompt(transcript, videoTitle);
       
       const systemMessage = customPrompt 
-        ? 'You are an advanced content summarizer. Follow the user\'s specific instructions exactly.'
+        ? 'You are an advanced content summarizer. Follow the user\'s specific instructions exactly. Output ONLY what is requested - do not add extra formatting, headers, or explanations unless specifically asked.'
         : 'You are a helpful assistant that creates concise, informative summaries of YouTube video transcripts.';
       
       const response = await this.openai.chat.completions.create({
@@ -106,13 +106,9 @@ IMPORTANT FORMATTING REQUIREMENTS:
   }
 
   formatSummaryOutput(summary, videoTitle, isCustomPrompt) {
-    // If it's a custom prompt and the response looks like JSON, format it properly
-    if (isCustomPrompt && this.isJsonResponse(summary)) {
-      return `**${videoTitle}**
-
-\`\`\`json
-${summary.trim()}
-\`\`\``;
+    // For custom prompts, follow the prompt instructions exactly - don't modify output
+    if (isCustomPrompt) {
+      return summary.trim();
     }
     
     // For regular summaries, return as-is
