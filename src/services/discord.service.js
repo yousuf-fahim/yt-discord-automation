@@ -693,15 +693,48 @@ ${transcript}`;
   // Command helper methods
   async getChannelStatus() {
     try {
-      const channels = [
-        { name: 'yt-uploads', type: 'monitoring', active: true, lastActivity: 'Recently' },
-        { name: 'yt-summaries-1', type: 'output', active: true, lastActivity: 'Recently' },
-        { name: 'yt-summaries-2', type: 'output', active: true, lastActivity: 'Recently' },
-        { name: 'yt-summaries-3', type: 'output', active: true, lastActivity: 'Recently' },
-        { name: 'daily-report', type: 'reports', active: true, lastActivity: 'Daily at 18:00' },
-        { name: 'daily-report-2', type: 'reports', active: true, lastActivity: 'Daily at 18:00' },
-        { name: 'daily-report-3', type: 'reports', active: true, lastActivity: 'Daily at 18:00' }
-      ];
+      const guild = this.client.guilds.cache.get(this.config.guildId);
+      if (!guild) {
+        throw new Error('Guild not found');
+      }
+
+      const channels = [];
+      
+      // Check monitoring channels
+      const monitoringChannels = ['yt-uploads', 'yt-transcripts'];
+      monitoringChannels.forEach(name => {
+        const channel = guild.channels.cache.find(ch => ch.name === name);
+        channels.push({
+          name,
+          type: 'monitoring',
+          active: !!channel,
+          lastActivity: channel ? 'Recently' : 'Channel not found'
+        });
+      });
+
+      // Check summary output channels
+      for (let i = 1; i <= 3; i++) {
+        const name = `yt-summaries-${i}`;
+        const channel = guild.channels.cache.find(ch => ch.name === name);
+        channels.push({
+          name,
+          type: 'output',
+          active: !!channel,
+          lastActivity: channel ? 'Recently' : 'Channel not found'
+        });
+      }
+
+      // Check report channels
+      for (let i = 1; i <= 3; i++) {
+        const name = i === 1 ? 'daily-report' : `daily-report-${i}`;
+        const channel = guild.channels.cache.find(ch => ch.name === name);
+        channels.push({
+          name,
+          type: 'reports',
+          active: !!channel,
+          lastActivity: channel ? 'Daily at 18:00 CEST' : 'Channel not found'
+        });
+      }
       
       return channels;
     } catch (error) {

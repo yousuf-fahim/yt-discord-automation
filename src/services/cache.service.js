@@ -129,6 +129,63 @@ class CacheService {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
+  async listSummaries() {
+    try {
+      const files = await fs.readdir(this.cacheDir);
+      const summaryFiles = files.filter(f => f.startsWith('summaries_'));
+      
+      const summaries = {};
+      for (const file of summaryFiles) {
+        const date = file.replace('summaries_', '').replace('.json', '');
+        const data = await this.get(`summaries_${date}`);
+        summaries[date] = data || [];
+      }
+      
+      return summaries;
+    } catch (error) {
+      console.error('Error listing summaries:', error);
+      return {};
+    }
+  }
+
+  async getTodaysSummaries() {
+    const today = new Date().toISOString().split('T')[0];
+    const data = await this.get(`summaries_${today}`);
+    return data || [];
+  }
+
+  async debugCache(pattern = '') {
+    try {
+      const files = await fs.readdir(this.cacheDir);
+      const matchingFiles = pattern 
+        ? files.filter(f => f.includes(pattern))
+        : files;
+      
+      const result = {};
+      for (const file of matchingFiles.slice(0, 10)) { // Limit to 10 files
+        const key = file.replace('.json', '');
+        try {
+          const data = await this.get(key);
+          result[key] = {
+            exists: true,
+            type: typeof data,
+            length: Array.isArray(data) ? data.length : (data ? Object.keys(data).length : 0),
+            preview: Array.isArray(data) 
+              ? `Array[${data.length}]` 
+              : (typeof data === 'string' ? data.substring(0, 100) + '...' : 'Object')
+          };
+        } catch (error) {
+          result[key] = { exists: false, error: error.message };
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error debugging cache:', error);
+      return { error: error.message };
+    }
+  }
+
   async healthCheck() {
     try {
       const stats = await this.getStats();

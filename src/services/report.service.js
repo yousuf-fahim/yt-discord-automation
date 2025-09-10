@@ -83,12 +83,12 @@ class ReportService {
       // Get existing summaries for today
       const existingSummaries = await this.getSummariesByDate(today);
       
-      // Add new summary
+      // Add new summary with consistent field names
       const newSummary = {
         videoId,
-        title: videoTitle,
-        content: summaryContent,
-        url: videoUrl,
+        videoTitle, // Use consistent field name
+        summaryContent, // Use consistent field name  
+        videoUrl, // Use consistent field name
         timestamp: new Date().toISOString()
       };
       

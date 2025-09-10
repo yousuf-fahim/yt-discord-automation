@@ -30,6 +30,8 @@ class CommandService {
     this.registerChannelStatusCommand();
     this.registerTranscriptTestCommand();
     this.registerValidatePromptsCommand();
+    this.registerDebugCacheCommand();
+    this.registerCheckSummariesCommand();
     
     console.log(`✅ Registered ${this.commands.size} slash commands`);
   }
@@ -562,6 +564,135 @@ class CommandService {
         } catch (error) {
           console.error('❌ Validate prompts command error:', error);
           await interaction.editReply('❌ Error validating prompts: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerDebugCacheCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('debug-cache')
+      .setDescription('Debug cache contents and structure')
+      .addStringOption(option =>
+        option.setName('pattern')
+          .setDescription('Filter cache files by pattern (e.g., "summaries", "transcript")')
+          .setRequired(false)
+      );
+    
+    this.commands.set('debug-cache', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const pattern = interaction.options.getString('pattern') || '';
+          console.log(`🔍 Debugging cache with pattern: "${pattern}"`);
+          
+          const cacheService = this.serviceManager.getService('cache');
+          if (!cacheService) {
+            throw new Error('Cache service not available');
+          }
+          
+          const debugInfo = await cacheService.debugCache(pattern);
+          
+          let description = '🔍 **Cache Debug Results:**\n\n';
+          
+          if (Object.keys(debugInfo).length === 0) {
+            description += 'No matching cache files found.\n';
+          } else {
+            Object.entries(debugInfo).forEach(([key, info]) => {
+              if (info.exists) {
+                description += `**${key}**\n`;
+                description += `• Type: ${info.type}\n`;
+                description += `• Length: ${info.length}\n`;
+                description += `• Preview: ${info.preview}\n\n`;
+              } else {
+                description += `**${key}** ❌ Error: ${info.error}\n\n`;
+              }
+            });
+          }
+          
+          const embed = new EmbedBuilder()
+            .setTitle('🔍 Cache Debug')
+            .setDescription(description.substring(0, 4000)) // Discord limit
+            .setColor(0x74c0fc)
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Debug cache command error:', error);
+          await interaction.editReply('❌ Error debugging cache: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerCheckSummariesCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('check-summaries')
+      .setDescription('Check today\'s summaries and recent cache')
+      .addBooleanOption(option =>
+        option.setName('all-dates')
+          .setDescription('Show summaries from all dates')
+          .setRequired(false)
+      );
+    
+    this.commands.set('check-summaries', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const showAll = interaction.options.getBoolean('all-dates') || false;
+          console.log(`📋 Checking summaries, showAll: ${showAll}`);
+          
+          const cacheService = this.serviceManager.getService('cache');
+          const reportService = this.serviceManager.getService('report');
+          
+          if (!cacheService || !reportService) {
+            throw new Error('Cache or Report service not available');
+          }
+          
+          let description = '📋 **Summary Check Results:**\n\n';
+          
+          // Check today's summaries
+          const todaysSummaries = await cacheService.getTodaysSummaries();
+          const today = new Date().toISOString().split('T')[0];
+          description += `**Today (${today}):** ${todaysSummaries.length} summaries\n`;
+          
+          if (todaysSummaries.length > 0) {
+            todaysSummaries.forEach((summary, index) => {
+              const title = summary.videoTitle || summary.title || `Video ${summary.videoId}`;
+              description += `${index + 1}. ${title.substring(0, 50)}...\n`;
+            });
+          }
+          description += '\n';
+          
+          // Check recent summaries (what reports use)
+          const recentSummaries = await reportService.getRecentSummaries();
+          description += `**Recent (24hrs):** ${recentSummaries.length} summaries\n`;
+          
+          if (showAll) {
+            // Show all summary dates
+            const allSummaries = await cacheService.listSummaries();
+            description += '\n**All Dates:**\n';
+            Object.entries(allSummaries).forEach(([date, summaries]) => {
+              description += `• ${date}: ${summaries.length} summaries\n`;
+            });
+          }
+          
+          const embed = new EmbedBuilder()
+            .setTitle('📋 Summary Status Check')
+            .setDescription(description.substring(0, 4000))
+            .setColor(todaysSummaries.length > 0 ? 0x51cf66 : 0xff6b6b)
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Check summaries command error:', error);
+          await interaction.editReply('❌ Error checking summaries: ' + error.message);
         }
       }
     });
