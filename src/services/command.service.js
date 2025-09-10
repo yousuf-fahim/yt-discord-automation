@@ -114,24 +114,45 @@ class CommandService {
           const discordService = this.serviceManager.getService('discord');
           
           if (channelOption === 'all') {
-            // Trigger all report channels
-            for (let i = 1; i <= 3; i++) {
-              try {
-                await discordService.processDailyReportWithPrompt(i);
-                results.push(`✅ Report ${i}: Generated successfully`);
-              } catch (error) {
-                results.push(`❌ Report ${i}: ${error.message}`);
-              }
+            // Trigger all report channels by calling the main daily report function
+            try {
+              await discordService.generateAndSendDailyReports();
+              results.push(`✅ All Reports: Generated successfully`);
+            } catch (error) {
+              results.push(`❌ All Reports: ${error.message}`);
             }
           } else {
-            // Trigger specific channel
+            // For specific channels, we need to get the guild and channel
             const channelNum = parseInt(channelOption);
             if (isNaN(channelNum) || channelNum < 1 || channelNum > 3) {
               throw new Error('Channel must be 1, 2, 3, or "all"');
             }
             
-            await discordService.processDailyReportWithPrompt(channelNum);
-            results.push(`✅ Report ${channelNum}: Generated successfully`);
+            try {
+              // Get the guild
+              const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+              if (!guild) {
+                throw new Error('Guild not found');
+              }
+              
+              // Find the prompt channel
+              const promptChannelName = `yt-daily-report-prompt-${channelNum}`;
+              const promptChannel = guild.channels.cache.find(ch => ch.name === promptChannelName);
+              
+              if (!promptChannel) {
+                throw new Error(`Prompt channel ${promptChannelName} not found`);
+              }
+              
+              // Generate a basic report for the prompt
+              const reportService = this.serviceManager.getService('report');
+              const summaries = await reportService.getRecentSummaries();
+              const defaultReport = reportService.buildReport(summaries);
+              
+              await discordService.processDailyReportWithPrompt(guild, promptChannel, defaultReport);
+              results.push(`✅ Report ${channelNum}: Generated successfully`);
+            } catch (error) {
+              results.push(`❌ Report ${channelNum}: ${error.message}`);
+            }
           }
           
           const embed = new EmbedBuilder()

@@ -84,11 +84,10 @@ class TranscriptService {
     const hasHealthy = Object.values(checks).some(check => check.status === 'ok' || check.status === 'healthy');
     
     return {
-      status: hasHealthy ? 'healthy' : 'unhealthy',
-      service: 'Multi-source Transcript Service',
+      status: hasHealthy ? 'ok' : 'error',
+      details: hasHealthy ? 'Multi-source transcript service operational' : 'All transcript sources unavailable',
       sources: checks,
-      primary: 'YouTube Transcript IO',
-      timestamp: new Date().toISOString()
+      primary: 'YouTube Transcript IO'
     };
   }
 }
