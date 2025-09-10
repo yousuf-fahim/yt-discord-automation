@@ -32,6 +32,7 @@ class CommandService {
     this.registerValidatePromptsCommand();
     this.registerDebugCacheCommand();
     this.registerCheckSummariesCommand();
+    this.registerClearCacheCommand();
     
     console.log(`✅ Registered ${this.commands.size} slash commands`);
   }
@@ -157,99 +158,6 @@ class CommandService {
             }
           }
           
-          const embed = new EmbedBuilder()
-            .setTitle('📊 Daily Report Trigger Results')
-            .setDescription(results.join('\n'))
-            .setColor(results.some(r => r.includes('❌')) ? 0xff6b6b : 0x51cf66)
-            .setTimestamp();
-          
-          await interaction.editReply({ embeds: [embed] });
-          
-        } catch (error) {
-          console.error('❌ Trigger report command error:', error);
-          await interaction.editReply('❌ Error triggering report: ' + error.message);
-        }
-      }
-    });
-  }
-
-  registerTriggerReportCommand() {
-    const command = new SlashCommandBuilder()
-      .setName('trigger-report')
-      .setDescription('Manually trigger daily report generation')
-      .addStringOption(option =>
-        option.setName('channel')
-          .setDescription('Which report to trigger')
-          .setRequired(false)
-          .addChoices(
-            { name: 'All Reports', value: 'all' },
-            { name: 'Report 1', value: '1' },
-            { name: 'Report 2', value: '2' },
-            { name: 'Report 3', value: '3' }
-          )
-      );
-    
-    this.commands.set('trigger-report', {
-      data: command,
-      execute: async (interaction) => {
-        await interaction.deferReply();
-        
-        try {
-          const channelOption = interaction.options.getString('channel') || 'all';
-          console.log(`📊 Triggering daily report, channel: ${channelOption}`);
-          
-          const reportService = this.serviceManager.getService('report');
-          const discordService = this.serviceManager.getService('discord');
-          
-          if (!reportService || !discordService) {
-            throw new Error('Report or Discord service not available');
-          }
-          
-          let results = [];
-          
-          if (channelOption === 'all') {
-            // Trigger all reports
-            try {
-              await reportService.sendDailyReport(discordService);
-              results.push('✅ All Reports: Successfully triggered');
-            } catch (error) {
-              console.error('❌ All reports error:', error);
-              results.push(`❌ All Reports: ${error.message}`);
-            }
-          } else {
-            // Trigger specific report
-            try {
-              const reportNumber = parseInt(channelOption);
-              const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
-              
-              if (!guild) {
-                throw new Error('Guild not found');
-              }
-              
-              // Generate report
-              const report = await reportService.generateDailyReport();
-              
-              // Find the specific daily report channel
-              const reportChannelName = `daily-report${reportNumber > 1 ? `-${reportNumber}` : ''}`;
-              const reportChannel = guild.channels.cache.find(
-                channel => channel.name === reportChannelName
-              );
-              
-              if (!reportChannel) {
-                throw new Error(`Channel ${reportChannelName} not found`);
-              }
-              
-              // Send report to specific channel
-              await discordService.sendLongMessage(reportChannel, report.data);
-              results.push(`✅ Report ${reportNumber}: Successfully sent to ${reportChannelName}`);
-              
-            } catch (error) {
-              console.error(`❌ Report ${channelOption} error:`, error);
-              results.push(`❌ Report ${channelOption}: ${error.message}`);
-            }
-          }
-          
-          // Create response embed
           const embed = new EmbedBuilder()
             .setTitle('📊 Daily Report Trigger Results')
             .setDescription(results.join('\n'))
@@ -786,6 +694,116 @@ class CommandService {
         } catch (error) {
           console.error('❌ Check summaries command error:', error);
           await interaction.editReply('❌ Error checking summaries: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerClearCacheCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('clear-cache')
+      .setDescription('Clear cached summaries and reset reporting system')
+      .addStringOption(option =>
+        option.setName('type')
+          .setDescription('What to clear')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Summaries Only', value: 'summaries' },
+            { name: 'Reports Only', value: 'reports' },
+            { name: 'Everything', value: 'all' },
+            { name: 'Specific Date (YYYY-MM-DD)', value: 'date' }
+          )
+      )
+      .addStringOption(option =>
+        option.setName('date')
+          .setDescription('Specific date to clear (YYYY-MM-DD format)')
+          .setRequired(false)
+      );
+    
+    this.commands.set('clear-cache', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const type = interaction.options.getString('type');
+          const dateStr = interaction.options.getString('date');
+          
+          console.log(`🧹 Clearing cache, type: ${type}, date: ${dateStr || 'N/A'}`);
+          
+          const cacheService = this.serviceManager.getService('cache');
+          if (!cacheService) {
+            throw new Error('Cache service not available');
+          }
+          
+          let results = [];
+          let cleared = 0;
+          
+          if (type === 'summaries') {
+            // Clear all summary files
+            const summaries = await cacheService.listSummaries();
+            for (const date of Object.keys(summaries)) {
+              const success = await cacheService.delete(`summaries_${date}`);
+              if (success) cleared++;
+            }
+            results.push(`🗑️ Cleared ${cleared} summary cache files`);
+            
+          } else if (type === 'reports') {
+            // Clear all report files  
+            const debugInfo = await cacheService.debugCache('daily_report');
+            for (const key of Object.keys(debugInfo)) {
+              if (key.startsWith('daily_report_')) {
+                const success = await cacheService.delete(key);
+                if (success) cleared++;
+              }
+            }
+            results.push(`🗑️ Cleared ${cleared} report cache files`);
+            
+          } else if (type === 'date' && dateStr) {
+            // Clear specific date
+            const summarySuccess = await cacheService.delete(`summaries_${dateStr}`);
+            const reportSuccess = await cacheService.delete(`daily_report_${dateStr}`);
+            
+            if (summarySuccess) results.push(`🗑️ Cleared summaries for ${dateStr}`);
+            if (reportSuccess) results.push(`🗑️ Cleared report for ${dateStr}`);
+            if (!summarySuccess && !reportSuccess) {
+              results.push(`ℹ️ No cache found for ${dateStr}`);
+            }
+            
+          } else if (type === 'all') {
+            // Clear everything
+            const debugInfo = await cacheService.debugCache();
+            for (const key of Object.keys(debugInfo)) {
+              if (key.startsWith('summaries_') || key.startsWith('daily_report_')) {
+                const success = await cacheService.delete(key);
+                if (success) cleared++;
+              }
+            }
+            results.push(`🗑️ Cleared ${cleared} cache files (summaries + reports)`);
+          }
+          
+          if (results.length === 0) {
+            results.push('ℹ️ No cache files found to clear');
+          }
+          
+          // Add reset confirmation
+          results.push('');
+          results.push('✅ **Reporting system reset!**');
+          results.push('• Next videos will start fresh summary tracking');
+          results.push('• Daily reports will show "No activity" until new summaries');
+          results.push('• Run `/check-summaries` to verify cache is cleared');
+          
+          const embed = new EmbedBuilder()
+            .setTitle('🧹 Cache Clearing Results')
+            .setDescription(results.join('\n'))
+            .setColor(0x51cf66)
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Clear cache command error:', error);
+          await interaction.editReply('❌ Error clearing cache: ' + error.message);
         }
       }
     });
