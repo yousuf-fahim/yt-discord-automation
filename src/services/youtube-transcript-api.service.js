@@ -19,6 +19,7 @@ class YouTubeTranscriptApiService {
       ...config
     };
 
+    this.pythonAvailable = true;
     this.initPromise = this.initialize();
   }
 
@@ -29,10 +30,14 @@ class YouTubeTranscriptApiService {
         await fs.mkdir(this.config.cacheDir, { recursive: true });
       }
 
-      // Check if youtube-transcript-api is installed
-      await this.checkPythonDependency();
-      
-      console.log('✅ YouTube Transcript API service initialized');
+      // Check if youtube-transcript-api is installed (fallback only)
+      try {
+        await this.checkPythonDependency();
+        console.log('✅ YouTube Transcript API service initialized');
+      } catch (pythonError) {
+        console.log('⚠️ Python not available - fallback service disabled (cloud environment)');
+        this.pythonAvailable = false;
+      }
     } catch (error) {
       console.error('❌ YouTube Transcript API initialization failed:', error.message);
       throw error;
@@ -78,6 +83,11 @@ except Exception as e:
 
   async getTranscript(videoId, options = {}) {
     await this.initPromise;
+
+    // Check if Python is available
+    if (!this.pythonAvailable) {
+      throw new Error('Python not available - fallback service disabled in cloud environment');
+    }
 
     // Check cache first
     if (this.config.cacheEnabled) {
