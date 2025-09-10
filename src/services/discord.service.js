@@ -716,7 +716,7 @@ ${transcript}`;
     // Check summary prompts
     for (let i = 1; i <= 3; i++) {
       try {
-        const prompt = await this.getPromptFromChannel(`yt-summary-prompt-${i}`);
+        const prompt = await this.getCustomPromptFromChannel(`yt-summary-prompt-${i}`);
         results.push({
           channel: `yt-summary-prompt-${i}`,
           valid: !!prompt,
@@ -734,7 +734,7 @@ ${transcript}`;
     // Check daily report prompts
     for (let i = 1; i <= 3; i++) {
       try {
-        const prompt = await this.getPromptFromChannel(`yt-daily-report-prompt-${i}`);
+        const prompt = await this.getCustomPromptFromChannel(`yt-daily-report-prompt-${i}`);
         results.push({
           channel: `yt-daily-report-prompt-${i}`,
           valid: !!prompt,

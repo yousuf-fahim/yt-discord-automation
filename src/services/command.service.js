@@ -67,7 +67,7 @@ class CommandService {
             .setTimestamp();
           
           Object.entries(healthResults).forEach(([service, result]) => {
-            const status = result.status === 'ok' ? '✅' : '❌';
+            const status = this.getServiceStatusIcon(result.status);
             embed.addFields({
               name: `${status} ${service.charAt(0).toUpperCase() + service.slice(1)} Service`,
               value: result.details || result.status,
@@ -111,11 +111,13 @@ class CommandService {
           
           let results = [];
           
+          const discordService = this.serviceManager.getService('discord');
+          
           if (channelOption === 'all') {
             // Trigger all report channels
             for (let i = 1; i <= 3; i++) {
               try {
-                await reportService.generateAndSendDailyReport(i);
+                await discordService.processDailyReportWithPrompt(i);
                 results.push(`✅ Report ${i}: Generated successfully`);
               } catch (error) {
                 results.push(`❌ Report ${i}: ${error.message}`);
@@ -128,7 +130,7 @@ class CommandService {
               throw new Error('Channel must be 1, 2, 3, or "all"');
             }
             
-            await reportService.generateAndSendDailyReport(channelNum);
+            await discordService.processDailyReportWithPrompt(channelNum);
             results.push(`✅ Report ${channelNum}: Generated successfully`);
           }
           
@@ -238,7 +240,7 @@ class CommandService {
           // Summary prompts (1-3)
           for (let i = 1; i <= 3; i++) {
             try {
-              const prompt = await discordService.getPromptFromChannel(`yt-summary-prompt-${i}`);
+              const prompt = await discordService.getCustomPromptFromChannel(`yt-summary-prompt-${i}`);
               results.push(`✅ Summary Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
             } catch (error) {
               results.push(`❌ Summary Prompt ${i}: ${error.message}`);
@@ -248,7 +250,7 @@ class CommandService {
           // Daily report prompts (1-3)
           for (let i = 1; i <= 3; i++) {
             try {
-              const prompt = await discordService.getPromptFromChannel(`yt-daily-report-prompt-${i}`);
+              const prompt = await discordService.getCustomPromptFromChannel(`yt-daily-report-prompt-${i}`);
               results.push(`✅ Report Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
             } catch (error) {
               results.push(`❌ Report Prompt ${i}: ${error.message}`);
@@ -526,6 +528,10 @@ class CommandService {
   getOverallHealthColor(healthResults) {
     const hasErrors = Object.values(healthResults).some(result => result.status !== 'ok');
     return hasErrors ? 0xff6b6b : 0x51cf66;
+  }
+
+  getServiceStatusIcon(status) {
+    return status === 'ok' ? '✅' : '❌';
   }
 
   extractVideoId(url) {
