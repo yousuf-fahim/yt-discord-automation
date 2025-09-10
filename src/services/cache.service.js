@@ -1,5 +1,5 @@
 /**
- * Cache Service - Centralized caching for transcripts and summaries
+ * Cache Service - Manage file-based caching
  */
 
 const fs = require('fs').promises;
@@ -8,74 +8,107 @@ const path = require('path');
 class CacheService {
   constructor(serviceManager, dependencies) {
     this.serviceManager = serviceManager;
-    this.logger = serviceManager.logger;
-    this.config = serviceManager.config.cache;
-    
-    this.cacheDir = this.config.directory;
-    this.ttl = this.config.ttl;
-    this.maxSizeMB = this.config.maxSizeMB;
+    this.logger = dependencies.logger || console;
+    this.cacheDir = path.join(process.cwd(), 'cache');
   }
 
   async initialize() {
-    await this.ensureCacheDirectory();
-    this.logger.info('Cache service initialized');
-  }
-
-  async ensureCacheDirectory() {
-    await fs.mkdir(this.cacheDir, { recursive: true });
-  }
-
-  async get(key) {
+    // Ensure cache directory exists
     try {
-      const filePath = path.join(this.cacheDir, `${key}.json`);
-      const data = await fs.readFile(filePath, 'utf8');
-      const cached = JSON.parse(data);
+      await fs.access(this.cacheDir);
+    } catch (error) {
+      await fs.mkdir(this.cacheDir, { recursive: true });
+    }
+    console.log('💾 Cache service initialized');
+  }
+
+  async getStats() {
+    try {
+      const files = await fs.readdir(this.cacheDir);
       
-      // Check TTL
-      if (Date.now() - cached.timestamp > this.ttl * 1000) {
-        await this.delete(key);
-        return null;
+      let totalSize = 0;
+      let transcripts = 0;
+      let summaries = 0;
+      let reports = 0;
+      
+      for (const file of files) {
+        const filePath = path.join(this.cacheDir, file);
+        const stats = await fs.stat(filePath);
+        totalSize += stats.size;
+        
+        if (file.includes('transcript')) transcripts++;
+        else if (file.includes('summary')) summaries++;
+        else if (file.includes('report')) reports++;
       }
       
-      return cached.data;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  async set(key, data) {
-    try {
-      const cached = {
-        data,
-        timestamp: Date.now()
+      return {
+        totalFiles: files.length,
+        totalSize: this.formatBytes(totalSize),
+        transcripts,
+        summaries,
+        reports
       };
       
-      const filePath = path.join(this.cacheDir, `${key}.json`);
-      await fs.writeFile(filePath, JSON.stringify(cached));
-      return true;
     } catch (error) {
-      this.logger.error('Cache set error', error);
-      return false;
+      console.error('Error getting cache stats:', error);
+      throw error;
     }
   }
 
-  async delete(key) {
+  async cleanup() {
     try {
-      const filePath = path.join(this.cacheDir, `${key}.json`);
-      await fs.unlink(filePath);
-      return true;
+      const files = await fs.readdir(this.cacheDir);
+      const now = Date.now();
+      const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+      
+      let removed = 0;
+      let spaceSaved = 0;
+      
+      for (const file of files) {
+        const filePath = path.join(this.cacheDir, file);
+        const stats = await fs.stat(filePath);
+        
+        if (now - stats.mtime.getTime() > maxAge) {
+          spaceSaved += stats.size;
+          await fs.unlink(filePath);
+          removed++;
+        }
+      }
+      
+      return {
+        removed,
+        spaceSaved: this.formatBytes(spaceSaved)
+      };
+      
     } catch (error) {
-      return false;
+      console.error('Error cleaning cache:', error);
+      throw error;
     }
+  }
+
+  formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
   async healthCheck() {
-    return {
-      status: 'ok',
-      directory: this.cacheDir,
-      ttl: this.ttl,
-      maxSizeMB: this.maxSizeMB
-    };
+    try {
+      const stats = await this.getStats();
+      return {
+        status: 'ok',
+        details: `${stats.totalFiles} files, ${stats.totalSize}`
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        details: error.message
+      };
+    }
   }
 }
 

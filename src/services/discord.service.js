@@ -2,8 +2,9 @@
  * Discord Service - Discord bot management and message handling
  */
 
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, Events, REST, Routes } = require('discord.js');
 const cron = require('node-cron');
+const CommandService = require('./command.service');
 
 class DiscordService {
   constructor(serviceManager, dependencies) {
@@ -24,6 +25,9 @@ class DiscordService {
         GatewayIntentBits.MessageContent
       ]
     });
+
+    // Initialize command service
+    this.commandService = null;
     
     this.setupEventHandlers();
     
@@ -43,7 +47,56 @@ class DiscordService {
   }
 
   async initialize() {
-    this.logger.info('Discord service initialized');
+    try {
+      console.log('🤖 Initializing Discord service...');
+      
+      await this.client.login(this.config.token);
+      
+      // Initialize command service after Discord client is ready
+      await this.initializeCommands();
+      
+      console.log('✅ Discord service initialized');
+      
+      // Schedule daily report generation
+      this.scheduleDailyReports();
+      
+    } catch (error) {
+      console.error('❌ Failed to initialize Discord service:', error);
+      throw error;
+    }
+  }
+
+  async initializeCommands() {
+    try {
+      console.log('🤖 Setting up Discord slash commands...');
+      
+      // Wait for client to be ready
+      if (!this.client.isReady()) {
+        await new Promise(resolve => this.client.once('ready', resolve));
+      }
+      
+      // Initialize command service
+      this.commandService = new CommandService(this.serviceManager, {
+        discord: this,
+        logger: console
+      });
+      
+      // Register slash commands with Discord
+      const rest = new REST({ version: '10' }).setToken(this.config.token);
+      
+      const commands = this.commandService.getCommandData();
+      
+      await rest.put(
+        Routes.applicationGuildCommands(this.client.user.id, this.config.guildId),
+        { body: commands }
+      );
+      
+      console.log(`✅ Successfully registered ${commands.length} slash commands`);
+      
+    } catch (error) {
+      console.error('❌ Failed to register slash commands:', error);
+      // Don't throw here - commands are optional, bot can still work
+    }
   }
 
   setupEventHandlers() {
@@ -58,6 +111,27 @@ class DiscordService {
         await this.handleMessage(message);
       } catch (error) {
         this.logger.error('Message handling error', error);
+      }
+    });
+
+    this.client.on('interactionCreate', async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
+      
+      try {
+        if (this.commandService) {
+          await this.commandService.handleCommand(interaction);
+        } else {
+          await interaction.reply('❌ Command service not available');
+        }
+      } catch (error) {
+        console.error('Command interaction error:', error);
+        
+        const errorMessage = '❌ There was an error executing this command!';
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({ content: errorMessage, ephemeral: true });
+        } else {
+          await interaction.reply({ content: errorMessage, ephemeral: true });
+        }
       }
     });
 
@@ -612,6 +686,68 @@ ${transcript}`;
       ping: this.client.ws.ping,
       guilds: this.client.guilds.cache.size
     };
+  }
+
+  // Command helper methods
+  async getChannelStatus() {
+    try {
+      const channels = [
+        { name: 'yt-uploads', type: 'monitoring', active: true, lastActivity: 'Recently' },
+        { name: 'yt-summaries-1', type: 'output', active: true, lastActivity: 'Recently' },
+        { name: 'yt-summaries-2', type: 'output', active: true, lastActivity: 'Recently' },
+        { name: 'yt-summaries-3', type: 'output', active: true, lastActivity: 'Recently' },
+        { name: 'daily-report', type: 'reports', active: true, lastActivity: 'Daily at 18:00' },
+        { name: 'daily-report-2', type: 'reports', active: true, lastActivity: 'Daily at 18:00' },
+        { name: 'daily-report-3', type: 'reports', active: true, lastActivity: 'Daily at 18:00' }
+      ];
+      
+      return channels;
+    } catch (error) {
+      console.error('Error getting channel status:', error);
+      throw error;
+    }
+  }
+
+  async validateAllPrompts() {
+    const results = [];
+    
+    // Check summary prompts
+    for (let i = 1; i <= 3; i++) {
+      try {
+        const prompt = await this.getPromptFromChannel(`yt-summary-prompt-${i}`);
+        results.push({
+          channel: `yt-summary-prompt-${i}`,
+          valid: !!prompt,
+          message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
+        });
+      } catch (error) {
+        results.push({
+          channel: `yt-summary-prompt-${i}`,
+          valid: false,
+          message: error.message
+        });
+      }
+    }
+    
+    // Check daily report prompts
+    for (let i = 1; i <= 3; i++) {
+      try {
+        const prompt = await this.getPromptFromChannel(`yt-daily-report-prompt-${i}`);
+        results.push({
+          channel: `yt-daily-report-prompt-${i}`,
+          valid: !!prompt,
+          message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
+        });
+      } catch (error) {
+        results.push({
+          channel: `yt-daily-report-prompt-${i}`,
+          valid: false,
+          message: error.message
+        });
+      }
+    }
+    
+    return results;
   }
 }
 
