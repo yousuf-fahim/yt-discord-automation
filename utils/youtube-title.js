@@ -23,7 +23,13 @@ async function getYouTubeTitle(videoId) {
     
     const response = await fetchFunction(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
       }
     });
     
@@ -59,13 +65,15 @@ async function getYouTubeTitle(videoId) {
           .replace(/\\"/g, '"')
           .trim();
         
+        console.log(`🔍 Pattern matched: "${title}"`);
+        
         // Filter out generic YouTube titles
         if (title === '- YouTube' || title === 'YouTube' || title.length < 3) {
-          console.log(`Skipping generic title: "${title}"`);
+          console.log(`⚠️ Skipping generic title: "${title}"`);
           continue;
         }
         
-        console.log(`Found YouTube title: ${title}`);
+        console.log(`✅ Found YouTube title: ${title}`);
         return title;
       }
     }
