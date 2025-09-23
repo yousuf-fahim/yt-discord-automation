@@ -121,6 +121,10 @@ Set up the following channels in your Discord server:
    # Optional Configuration
    CACHE_TRANSCRIPTS=true
    DEBUG_MODE=false
+   
+   # Bot Message Processing (Optional)
+   DISCORD_ALLOWED_CHANNELS=youtube,videos,media,links,general,notifications
+   DISCORD_TRUSTED_BOTS=NotifyMe,IFTTT,Zapier,YouTube,RSS
    ```
 
 ### Setting Up Prompts

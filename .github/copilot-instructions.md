@@ -4,110 +4,119 @@
 
 This is a Node.js bot that automates the process of:
 1. Monitoring Discord channels for YouTube links
-2. Extracting video transcripts using multiple methods
+2. Extracting video transcripts using a multi-service strategy
 3. Generating AI summaries using OpenAI
 4. Creating daily reports of summarized videos
 
-## Core Architecture
+## Core Architecture 
 
 ### Major Components
 
-- `api/listener.js`: Main Discord bot entry point that monitors messages
-- `api/transcript.js`: Multi-strategy transcript extraction service
-- `api/summary.js`: OpenAI-based summarization service
-- `api/report.js`: Daily report generation service
-- `utils/*.js`: Shared utilities for YouTube, Discord, OpenAI, and caching
+- `src/services/` - Core services using dependency injection:
+  - `transcript.service.js`: Multi-strategy transcript extraction orchestrator
+  - `summary.service.js`: OpenAI integration for summarization
+  - `report.service.js`: Daily report compilation
+  - `discord.service.js`: Discord bot interactions
+- `src/core/service-manager.js`: Dependency injection container
+- `vps-transcript-api/`: Standalone transcript extraction API
 
-### Data Flow
+### Data Flow & Service Strategy
 
-1. Discord message → YouTube link extraction (`listener.js`)
-2. Video ID → Transcript extraction (`transcript.js`)
-   - Primary: YouTube Transcript API 
-   - Fallback: Direct YouTube scraping via Puppeteer
-3. Transcript → AI Summary generation (`summary.js`)
-4. Summaries → Daily report compilation (`report.js`)
+1. Discord message → Link extraction (`discord.service.js`)
+2. Video ID → Transcript extraction (`transcript.service.js`):
+   ```js
+   // Multi-layered transcript extraction:
+   1. Try VPS Transcript API (residential IP)
+   2. Fallback to local YouTube API
+   3. Final fallback to RapidAPI provider
+   ```
+3. Transcript → AI Summary (`summary.service.js`) 
+4. Summaries → Daily report (`report.service.js`)
 
 ## Key Patterns & Conventions
 
-### Transcript Extraction Strategy
-
-The system uses a multi-layered approach for reliability:
+### Error-Resilient Transcript Extraction
 
 ```javascript
-// Example from transcript.js
-1. Try YouTube Transcript API with multiple language options
-2. Fallback to direct YouTube page scraping if API fails
-3. Cache successful transcripts for future use
+// Example from transcript.service.js
+class TranscriptService {
+  async getTranscript(videoId, options = {}) {
+    try {
+      // Try VPS service first (residential IP)
+      if (this.vpsClient) {
+        const vpsResult = await this.vpsClient.getTranscript(videoId);
+        if (vpsResult) return vpsResult;
+      }
+      
+      // Fallback to local service
+      const result = await this.youtubeApi.getTranscript(videoId);
+      if (result) return result;
+      
+      return null;
+    } catch (error) {
+      this.logger.error('All transcript sources exhausted');
+      return null;
+    }
+  }
+}
 ```
 
 ### Caching System
 
 - Location: `cache/` directory
-- Format: JSON files named `{videoId}_summary_1.json` for summaries
-- Management: Use `api/manage-cache.js` for cleanup
+- Formats:
+  - Transcripts: `{videoId}_transcript.json`
+  - Summaries: `{videoId}_summary_{timestamp}.json` 
+  - Daily Reports: `daily_report_{date}.json`
+- Management: Use `src/services/cache.service.js` APIs
 
-### Error Handling
+### Service Integration Points
 
-- Extensive retry logic for transcript extraction (see `MAX_RETRIES` in `transcript.js`)
-- Graceful degradation between transcript extraction methods
-- Detailed logging for debugging
-
-## Development Workflows
-
-### Local Setup
-
-1. Install dependencies:
+Required environment variables:
 ```bash
-npm install
-yt-dlp # Required for transcript extraction
-```
-
-2. Environment Configuration:
-```
-DISCORD_BOT_TOKEN=
+# Core APIs
+DISCORD_BOT_TOKEN=  
 DISCORD_GUILD_ID=
 OPENAI_API_KEY=
-YOUTUBE_API_KEY= # Optional, for titles
+
+# Transcript Services
+VPS_TRANSCRIPT_API_URL=  # Optional, enables VPS service
+RAPIDAPI_KEY=           # Optional, enables RapidAPI fallback
+YOUTUBE_API_KEY=        # Optional, for video metadata
 ```
 
-### Testing
+### Development Workflows
 
-- Use `test-*.js` files for testing individual components
-- Sample test transcripts available in `test-transcript-output.txt`
-
-### Cache Management
-
+#### Local Testing
 ```bash
-# View cache stats
-node api/manage-cache.js stats
+# Test transcript extraction
+node scripts/test-local.sh <video-id>
 
-# Clean old cache files
-node api/manage-cache.js clean [days] [maxSizeMB]
+# Test daily report generation 
+node test-daily-report-new.js
 ```
 
-## Integration Points
+#### Health Monitoring
+```javascript
+// Example from health-check.js
+await transcriptService.healthCheck();
+await summaryService.healthCheck();
+```
 
-### Discord Channels
+## Common Issues & Solutions
 
-Required channel structure:
-- `#yt-uploads`: Input channel for YouTube links
-- `#yt-summary-prompt-*`: Channels with pinned prompts
-- `#yt-summaries-*`: Output channels for summaries
-- `#daily-report`: Daily report output
+1. YouTube API Blocks:
+   - Use VPS service as primary source
+   - Configure proxy if needed for local service
+   - RapidAPI as final fallback
 
-### External APIs
+2. Cache Management:
+   - Regular cleanup with `cache.service.js`
+   - Monitor size with health checks
+   - Configurable retention periods
 
-1. Discord Bot API
-   - Required Intents: Guilds, GuildMessages, MessageContent
-2. OpenAI API 
-   - Default model: gpt-4-turbo
-3. YouTube Data API (optional)
-   - Used only for video title fetching
+3. Discord Rate Limits:
+   - Built-in queue system in `discord.service.js`
+   - Automatic retry with exponential backoff
 
-## Common Gotchas
-
-1. YouTube Shorts/Live videos are intentionally skipped (see `isYouTubeShort`, `isYouTubeLive` checks)
-2. Puppeteer requires specific Chrome setup in production (see Chrome buildpack config)
-3. Daily reports are scheduled in CEST timezone (configurable via env vars)
-
-Remember to check the cache directory size periodically as transcripts and summaries can accumulate quickly.
+Remember to check `utils/monitoring.js` logs when debugging service issues. The system is designed to gracefully degrade through multiple transcript sources.

@@ -1,7 +1,7 @@
 /**
  * YouTube Transcript API Service
  * Uses the free youtube-transcript-api Python library with Node.js integration
- * Fallback service for local development (blocked on cloud IPs)
+ * Optimized for Heroku deployment with proxy support
  */
 
 const { spawn } = require('child_process');
@@ -14,12 +14,12 @@ class YouTubeTranscriptApiService {
       cacheEnabled: config.cacheEnabled !== false,
       cacheDir: config.cacheDir || path.join(process.cwd(), 'cache'),
       pythonPath: config.pythonPath || 'python3',
+      proxyConfig: config.proxyConfig || null,
       timeout: config.timeout || 30000,
       retryAttempts: config.retryAttempts || 3,
       ...config
     };
 
-    this.pythonAvailable = true;
     this.initPromise = this.initialize();
   }
 
@@ -30,14 +30,10 @@ class YouTubeTranscriptApiService {
         await fs.mkdir(this.config.cacheDir, { recursive: true });
       }
 
-      // Check if youtube-transcript-api is installed (fallback only)
-      try {
-        await this.checkPythonDependency();
-        console.log('✅ YouTube Transcript API service initialized');
-      } catch (pythonError) {
-        console.log('⚠️ Python not available - fallback service disabled (cloud environment)');
-        this.pythonAvailable = false;
-      }
+      // Check if youtube-transcript-api is installed
+      await this.checkPythonDependency();
+      
+      console.log('✅ YouTube Transcript API service initialized');
     } catch (error) {
       console.error('❌ YouTube Transcript API initialization failed:', error.message);
       throw error;
@@ -83,11 +79,6 @@ except Exception as e:
 
   async getTranscript(videoId, options = {}) {
     await this.initPromise;
-
-    // Check if Python is available
-    if (!this.pythonAvailable) {
-      throw new Error('Python not available - fallback service disabled in cloud environment');
-    }
 
     // Check cache first
     if (this.config.cacheEnabled) {
@@ -187,6 +178,7 @@ except Exception as e:
 
   generatePythonScript(videoId, options = {}) {
     const languages = options.languages || ['en'];
+    const proxyConfig = this.config.proxyConfig;
     
     return `
 import json
@@ -194,10 +186,25 @@ import sys
 import traceback
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import RequestBlocked, VideoUnavailable, TranscriptsDisabled, NoTranscriptFound
+${proxyConfig ? 'from youtube_transcript_api.proxies import GenericProxyConfig' : ''}
 
 try:
-    # Create API instance (local only - cloud IPs are blocked)
+    # Configure proxy if available
+    ${proxyConfig ? `
+    import urllib.parse
+    encoded_username = urllib.parse.quote("${proxyConfig.username}", safe='')
+    encoded_password = urllib.parse.quote("${proxyConfig.password}", safe='')
+    proxy_url = f"http://{encoded_username}:{encoded_password}@${proxyConfig.host}:${proxyConfig.port}"
+    proxy_config = GenericProxyConfig(
+        http_url=proxy_url,
+        https_url=proxy_url
+    )
+    # Create API instance with proxy
+    api = YouTubeTranscriptApi(proxy_config=proxy_config)
+    ` : `
+    # Create API instance without proxy
     api = YouTubeTranscriptApi()
+    `}
     
     # Get transcript list
     transcript_list = api.list("${videoId}")
@@ -237,7 +244,7 @@ except RequestBlocked as e:
         "success": False,
         "error": "YouTube blocked request from cloud provider IP",
         "error_type": "RequestBlocked",
-        "details": "YouTube blocks requests from cloud providers. This service only works locally.",
+        "details": "YouTube blocks requests from cloud providers like Heroku. Consider using a proxy or alternative deployment.",
         "traceback": traceback.format_exc(),
         "video_id": "${videoId}"
     }
@@ -318,7 +325,7 @@ except Exception as e:
         service: 'YouTube Transcript API',
         python_path: this.config.pythonPath,
         cache_enabled: this.config.cacheEnabled,
-        note: 'Local development only - blocked on cloud IPs',
+        proxy_configured: !!this.config.proxyConfig,
         timestamp: new Date().toISOString()
       };
     } catch (error) {

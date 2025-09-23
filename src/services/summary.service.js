@@ -43,8 +43,8 @@ class SummaryService {
         : this.buildSummaryPrompt(transcript, videoTitle);
       
       const systemMessage = customPrompt 
-        ? 'You are an advanced content summarizer. Follow the user\'s specific instructions exactly. Output ONLY what is requested - do not add extra formatting, headers, or explanations unless specifically asked.'
-        : 'You are a helpful assistant that creates concise, informative summaries of YouTube video transcripts.';
+        ? 'You are an advanced content summarizer. Follow the user\'s specific instructions exactly. Respond in the format requested by the user\'s prompt. Do not add JSON formatting, code blocks, or extra markup unless the prompt explicitly asks for it.'
+        : 'You are a helpful assistant that creates concise, informative summaries of YouTube video transcripts. Always respond in plain text format. Do not use JSON, code blocks, or any special formatting unless explicitly requested.';
       
       const response = await this.openai.chat.completions.create({
         model: this.config.model,
@@ -58,8 +58,30 @@ class SummaryService {
 
       const summary = response.choices[0].message.content;
       
+      // Debug logging for JSON detection
+      const isJson = this.isJsonResponse(summary);
+      const isCustomPrompt = !!customPrompt;
+      
+      // Log detailed information about the response
+      this.logger.debug(`Summary generated for "${videoTitle}": ${summary.length} chars, JSON: ${isJson}, Custom: ${isCustomPrompt}`);
+      
+      if (isJson && !isCustomPrompt) {
+        this.logger.warn('⚠️  UNEXPECTED JSON: AI returned JSON format for regular summary without custom prompt', {
+          videoTitle: videoTitle?.substring(0, 50),
+          summaryPreview: summary.substring(0, 200),
+          promptUsed: this.buildSummaryPrompt('...', videoTitle).substring(0, 100)
+        });
+      } else if (isJson && isCustomPrompt && !customPrompt.toLowerCase().includes('json')) {
+        this.logger.warn('⚠️  POTENTIAL ISSUE: AI returned JSON but custom prompt doesn\'t mention JSON', {
+          videoTitle: videoTitle?.substring(0, 50),
+          promptPreview: customPrompt.substring(0, 100)
+        });
+      } else if (isJson && isCustomPrompt) {
+        this.logger.info('✅ AI returned JSON format for custom prompt (appears intentional)');
+      }
+      
       // Format the output if it's JSON from a custom prompt
-      const formattedSummary = this.formatSummaryOutput(summary, videoTitle, customPrompt);
+      const formattedSummary = this.formatSummaryOutput(summary, videoTitle, isCustomPrompt);
       
       // Cache the result
       await this.cache.set(cacheKey, formattedSummary);
@@ -69,6 +91,50 @@ class SummaryService {
       
     } catch (error) {
       this.logger.error('Summary generation failed', error);
+      throw error;
+    }
+  }
+
+  async generateCustomReport(summariesData, customPrompt) {
+    try {
+      this.logger.info('Generating custom report with OpenAI...');
+      
+      const systemMessage = 'You are an advanced report generator. Follow the user\'s instructions exactly for format and content. Output exactly what is requested - do not add extra formatting, headers, or explanations unless specifically asked for in the prompt.';
+      
+      const userPrompt = `${customPrompt}
+
+Data to process:
+${summariesData}`;
+
+      const response = await this.openai.chat.completions.create({
+        model: this.config.model,
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: userPrompt }
+        ],
+        max_tokens: this.config.maxTokens,
+        temperature: 0.3
+      });
+
+      const report = response.choices[0].message.content;
+      
+      // Debug logging for report format
+      const isJson = this.isJsonResponse(report);
+      if (isJson) {
+        this.logger.info('📋 Custom report generated in JSON format', {
+          promptPreview: customPrompt.substring(0, 50)
+        });
+      } else {
+        this.logger.info('📋 Custom report generated in text format', {
+          promptPreview: customPrompt.substring(0, 50)
+        });
+      }
+      
+      this.logger.info('Custom report generated successfully');
+      return report.trim();
+      
+    } catch (error) {
+      this.logger.error('Custom report generation failed', error);
       throw error;
     }
   }
@@ -89,20 +155,14 @@ Please provide:
 Keep the summary concise but informative, focusing on the most important content.`;
   }
 
-  buildCustomPrompt(transcript, title, customPrompt) {
+  buildCustomPrompt(customPrompt, transcript, videoTitle, videoUrl) {
     return `${customPrompt}
 
-Video Title: ${title}
-
-Transcript:
+TRANSCRIPT:
 ${transcript}
 
-IMPORTANT FORMATTING REQUIREMENTS:
-- If the prompt asks for JSON format, respond ONLY with valid JSON
-- Do not include any text before or after the JSON block
-- Do not include markdown code blocks or backticks
-- Ensure the JSON structure includes: title, summary (array), noteworthy_mentions (array), verdict (string)
-- Make sure all JSON strings are properly escaped and the JSON is valid`;
+VIDEO TITLE: ${videoTitle}
+VIDEO URL: ${videoUrl}`;
   }
 
   formatSummaryOutput(summary, videoTitle, isCustomPrompt) {
@@ -128,6 +188,70 @@ IMPORTANT FORMATTING REQUIREMENTS:
       hash = hash & hash; // Convert to 32bit integer
     }
     return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * Generate custom daily report using OpenAI
+   * @param {string} customPrompt - Custom prompt from Discord
+   * @param {string} reportContent - The default report content
+   * @returns {Promise<string>} - Generated custom report
+   */
+  async generateCustomDailyReport(customPrompt, reportContent) {
+    try {
+      this.logger.debug('Generating custom daily report with OpenAI');
+      
+      const messages = [
+        {
+          role: "system",
+          content: "You are an AI assistant that generates custom daily reports based on user prompts. Follow the user's instructions exactly and maintain their preferred format and style."
+        },
+        {
+          role: "user", 
+          content: this.buildCustomReportPrompt(customPrompt, reportContent)
+        }
+      ];
+
+      const response = await this.openai.chat.completions.create({
+        model: this.config.model,
+        messages: messages,
+        max_tokens: this.config.maxTokens,
+        temperature: 0.7
+      });
+
+      const customReport = response.choices[0]?.message?.content?.trim();
+      
+      if (!customReport) {
+        this.logger.warn('Empty response from OpenAI for custom daily report');
+        return reportContent; // Fallback to default report
+      }
+
+      // Debug logging for daily reports
+      const isJson = this.isJsonResponse(customReport);
+      this.logger.debug(`Custom daily report generated: ${customReport.length} chars, JSON: ${isJson}`);
+      
+      if (isJson && !customPrompt.toLowerCase().includes('json')) {
+        this.logger.warn('⚠️  UNEXPECTED JSON: Daily report returned JSON but prompt doesn\'t mention JSON', {
+          promptPreview: customPrompt.substring(0, 100),
+          reportPreview: customReport.substring(0, 200)
+        });
+      }
+      
+      return customReport;
+
+    } catch (error) {
+      this.logger.error('Error generating custom daily report with OpenAI:', error);
+      return reportContent; // Fallback to default report
+    }
+  }
+
+  /**
+   * Build prompt for custom daily report
+   */
+  buildCustomReportPrompt(customPrompt, reportContent) {
+    return `${customPrompt}
+
+DEFAULT REPORT CONTENT:
+${reportContent}`;
   }
 
   async healthCheck() {

@@ -30,6 +30,14 @@ class ServiceManager extends EventEmitter {
           transcripts: process.env.DISCORD_YT_TRANSCRIPTS_CHANNEL || 'yt-transcripts', 
           dailyReport: process.env.DISCORD_DAILY_REPORT_CHANNEL || 'daily-report'
         },
+        // Allowed channel patterns for YouTube link processing
+        allowedChannelPatterns: process.env.DISCORD_ALLOWED_CHANNELS ? 
+          process.env.DISCORD_ALLOWED_CHANNELS.split(',').map(s => s.trim()) : 
+          ['youtube', 'videos', 'media', 'links', 'general', 'bot-spam', 'feeds', 'notifications'],
+        // Trusted bots that can trigger video processing
+        trustedBots: process.env.DISCORD_TRUSTED_BOTS ? 
+          process.env.DISCORD_TRUSTED_BOTS.split(',').map(s => s.trim()) : 
+          ['NotifyMe', 'IFTTT', 'Zapier', 'YouTube', 'RSS'],
         prefixes: {
           summaryPrompt: process.env.SUMMARY_PROMPT_PREFIX || 'yt-summary-prompt-',
           summariesOutput: process.env.SUMMARIES_OUTPUT_PREFIX || 'yt-summaries-',

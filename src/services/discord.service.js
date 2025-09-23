@@ -107,7 +107,14 @@ class DiscordService {
     });
 
     this.client.on('messageCreate', async (message) => {
-      if (message.author.bot) return;
+      // Skip messages from our own bot to prevent loops
+      if (message.author.id === this.client.user?.id) return;
+      
+      // For bot messages, check if it's a trusted bot
+      if (message.author.bot && !this.isTrustedBot(message.author)) {
+        this.logger.debug(`Ignoring message from untrusted bot: ${message.author.username}`);
+        return;
+      }
       
       try {
         await this.handleMessage(message);
@@ -142,6 +149,24 @@ class DiscordService {
     });
   }
 
+  /**
+   * Check if a bot user is in the trusted bots list
+   * @param {import('discord.js').User} botUser - The bot user to check
+   * @returns {boolean} - Whether the bot is trusted
+   */
+  isTrustedBot(botUser) {
+    if (!botUser.bot) return true; // Not a bot, so it's allowed
+    
+    const trustedBots = this.config.trustedBots || ['NotifyMe', 'IFTTT', 'Zapier', 'YouTube', 'RSS'];
+    const botName = botUser.username || botUser.displayName || '';
+    
+    // Check exact match or partial match (case insensitive)
+    return trustedBots.some(trusted => 
+      botName.toLowerCase().includes(trusted.toLowerCase()) ||
+      trusted.toLowerCase().includes(botName.toLowerCase())
+    );
+  }
+
   async handleMessage(message) {
     // Prevent duplicate processing of the same message
     if (this.processedMessages.has(message.id)) {
@@ -156,15 +181,19 @@ class DiscordService {
     if (match) {
       const videoId = match[1];
       const channelName = message.channel.name;
+      const authorInfo = message.author.bot ? `Bot: ${message.author.username}` : `User: ${message.author.username}`;
+      
+      this.logger.info(`Found YouTube link in message from ${authorInfo} in channel: ${channelName}`);
       
       // Mark message as being processed
       this.processedMessages.add(message.id);
       
       this.logger.info(`Processing YouTube video: ${videoId} in channel: ${channelName}`);
       
-      // Only process videos in yt-uploads channel
-      if (!channelName || !channelName.includes(this.config.channels.uploads)) {
-        this.logger.info(`Ignoring video in non-upload channel: ${channelName}`);
+      // Check if we should process this channel
+      const shouldProcess = this.shouldProcessChannel(channelName);
+      if (!shouldProcess) {
+        this.logger.info(`Ignoring video in non-monitored channel: ${channelName}`);
         return;
       }
       
@@ -197,6 +226,35 @@ class DiscordService {
         await message.reply('Sorry, there was an error processing this video.');
       }
     }
+  }
+
+  /**
+   * Determine if a channel should be processed for YouTube links
+   * @param {string} channelName - The name of the channel
+   * @returns {boolean} - Whether to process this channel
+   */
+  shouldProcessChannel(channelName) {
+    if (!channelName) return false;
+    
+    // Primary channel (exact match or contains)
+    if (channelName.includes(this.config.channels.uploads)) {
+      return true;
+    }
+    
+    // Use configured allowed patterns or defaults
+    const allowedPatterns = this.config.allowedChannelPatterns || [
+      'youtube',
+      'videos', 
+      'media', 
+      'links',
+      'general',
+      'bot-spam',
+      'feeds',
+      'notifications'
+    ];
+    
+    const lowerChannelName = channelName.toLowerCase();
+    return allowedPatterns.some(pattern => lowerChannelName.includes(pattern));
   }
 
   extractTitleFromMessage(content) {
@@ -524,7 +582,10 @@ ${transcript}`;
     cron.schedule(cronExpression, async () => {
       this.logger.info('Running scheduled daily report...');
       try {
-        await this.report.sendDailyReport(this);
+        // Generate report and send directly to avoid circular calls
+        const report = await this.report.generateDailyReport();
+        await this.sendDailyReport(report);
+        this.logger.info('Scheduled daily report completed successfully');
       } catch (error) {
         this.logger.error('Scheduled daily report failed', error);
       }
@@ -639,11 +700,9 @@ ${transcript}`;
         `${index + 1}. ${summary.title}\nContent: ${summary.content}\nURL: ${summary.url}\nTime: ${new Date(summary.timestamp).toLocaleString()}\n`
       ).join('\n');
 
-      // Generate custom report using summary service
-      const prompt = `${customPrompt}\n\nRecent YouTube Video Summaries (Last 24 hours):\n${summariesText}`;
-      
-      const customReport = await this.summary.generateSummary(summariesText, 'Daily Report', '', prompt);
-      return customReport; // Ensure consistent string return type
+      // Use the dedicated custom report method instead of video summary method
+      const customReport = await this.summary.generateCustomDailyReport(customPrompt, summariesText);
+      return customReport; // Clean string return type
     } catch (error) {
       this.logger.error('Error generating custom daily report', error);
       console.error('🚨 Custom report generation failed, using fallback:', error);
