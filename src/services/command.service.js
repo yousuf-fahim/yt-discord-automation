@@ -842,12 +842,14 @@ class CommandService {
   }
 
   getOverallHealthColor(healthResults) {
-    const hasErrors = Object.values(healthResults).some(result => result.status !== 'ok');
+    const hasErrors = Object.values(healthResults).some(result => 
+      result.status !== 'ok' && result.status !== 'healthy'
+    );
     return hasErrors ? 0xff6b6b : 0x51cf66;
   }
 
   getServiceStatusIcon(status) {
-    return status === 'ok' ? '✅' : '❌';
+    return (status === 'ok' || status === 'healthy') ? '✅' : '❌';
   }
 
   extractVideoId(url) {
