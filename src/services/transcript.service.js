@@ -1,12 +1,26 @@
 /**
  * Enhanced Transcript Service - Multi-source approach
- * Primary: VPS Transcript API (DigitalOcean)
- * Fallback: Local YouTube Transcript API with proxy
+ * Priority: YouTube Transcript IO API (cloud-friendly)
+ * Fallback: VPS Transcript API or RapidAPI
+ * Local Python service only in development
  */
 
 require('dotenv').config();
-const YouTubeTranscriptApiService = require('./youtube-transcript-api.service');
-const VPSTranscriptClient = require('./vps-transcript-client.service');
+const YouTubeTranscriptIOService = require('./youtube-transcript-io.service');
+const VPSTranscriptClient = require('./vps-transcript-client.service'); 
+const RapidApiTranscriptService = require('./rapidapi-transcript.service');
+
+// Only import Python service in development
+let YouTubeTranscriptApiService;
+const isPythonAvailable = process.env.NODE_ENV === 'development' || process.env.FORCE_PYTHON_SERVICE === 'true';
+
+if (isPythonAvailable) {
+  try {
+    YouTubeTranscriptApiService = require('./youtube-transcript-api.service');
+  } catch (error) {
+    console.log('⚠️  Python-based service not available, skipping...');
+  }
+}
 
 // Create the service instance
 class TranscriptService {
@@ -14,6 +28,12 @@ class TranscriptService {
     this.serviceManager = serviceManager;
     this.cache = dependencies.cache;
     this.logger = serviceManager.logger;
+    
+    // Initialize YouTube Transcript IO as primary service (cloud-friendly)
+    if (process.env.YOUTUBE_TRANSCRIPT_IO_TOKEN) {
+      console.log('🎯 Initializing YouTube Transcript IO (Primary)...');
+      this.transcriptIOService = new YouTubeTranscriptIOService();
+    }
     
     // Initialize VPS client if URL is provided
     if (process.env.VPS_TRANSCRIPT_API_URL) {
@@ -23,34 +43,84 @@ class TranscriptService {
         retryAttempts: 3,
         timeout: 30000
       });
-    } else {
-      console.log('⚠️  No VPS_TRANSCRIPT_API_URL configured, using local service only');
     }
     
-    // Initialize local service as fallback
-    this.youtubeApi = new YouTubeTranscriptApiService({
-      cacheEnabled: true,
-      retryAttempts: 3,
-      timeout: 30000,
-      proxyConfig: process.env.PROXY_HOST ? {
-        host: process.env.PROXY_HOST,
-        port: process.env.PROXY_PORT || '31280',
-        username: process.env.PROXY_USERNAME,
-        password: process.env.PROXY_PASSWORD
-      } : null
-    });
+    // Initialize RapidAPI service if key is provided
+    if (process.env.RAPIDAPI_KEY) {
+      console.log('⚡ Initializing RapidAPI Transcript Service...');
+      try {
+        this.rapidApiService = new RapidApiTranscriptService();
+      } catch (error) {
+        console.log('⚠️  RapidAPI service initialization failed:', error.message);
+      }
+    }
+    
+    // Initialize local Python service only in development or when forced
+    if (isPythonAvailable && YouTubeTranscriptApiService) {
+      console.log('🐍 Initializing Local Python Service (Dev/Fallback)...');
+      this.youtubeApi = new YouTubeTranscriptApiService({
+        cacheEnabled: true,
+        retryAttempts: 3,
+        timeout: 30000,
+        proxyConfig: process.env.PROXY_HOST ? {
+          host: process.env.PROXY_HOST,
+          port: process.env.PROXY_PORT || '31280',
+          username: process.env.PROXY_USERNAME,
+          password: process.env.PROXY_PASSWORD
+        } : null
+      });
+    } else {
+      console.log('⚠️  Python service skipped (cloud deployment or not available)');
+    }
+    
+    // Log which services are available
+    this.logAvailableServices();
+  }
+
+  logAvailableServices() {
+    const services = [];
+    if (this.transcriptIOService) services.push('YouTube Transcript IO');
+    if (this.vpsClient) services.push('VPS API');
+    if (this.rapidApiService) services.push('RapidAPI');
+    if (this.youtubeApi) services.push('Python API');
+    
+    console.log(`📋 Available transcript services: ${services.join(', ')}`);
+    if (services.length === 0) {
+      console.warn('⚠️  NO TRANSCRIPT SERVICES AVAILABLE! Bot will not be able to extract transcripts.');
+    }
   }
 
   async initialize() {
-    await this.youtubeApi.initPromise;
-    this.logger.info('Transcript service initialized with YouTube Transcript API');
+    // Only initialize Python service if available
+    if (this.youtubeApi) {
+      await this.youtubeApi.initPromise;
+      this.logger.info('Transcript service initialized with YouTube Transcript API (Python)');
+    } else {
+      this.logger.info('Transcript service initialized (cloud-only services)');
+    }
   }
 
   async getTranscript(videoId, options = {}) {
     try {
       this.logger.info(`Getting transcript for video: ${videoId}`);
       
-      // Try VPS client first if available
+      // Try YouTube Transcript IO first (cloud-friendly, most reliable)
+      if (this.transcriptIOService) {
+        try {
+          console.log('🎯 Trying YouTube Transcript IO API...');
+          const ioResult = await this.transcriptIOService.getTranscript(videoId, options);
+          
+          if (ioResult) {
+            this.logger.info(`YouTube Transcript IO extracted successfully: ${ioResult.length} characters`);
+            return ioResult;
+          }
+        } catch (ioError) {
+          console.log(`❌ YouTube Transcript IO failed: ${ioError.message}`);
+          console.log('⏳ Falling back to next service...');
+        }
+      }
+      
+      // Try VPS client second if available
       if (this.vpsClient) {
         try {
           console.log('🔗 Trying VPS Transcript API...');
@@ -64,21 +134,54 @@ class TranscriptService {
           }
         } catch (vpsError) {
           console.log(`❌ VPS failed: ${vpsError.message}`);
-          console.log('⏳ Falling back to local service...');
+          console.log('⏳ Falling back to next service...');
         }
       }
       
-      // Fallback to local service
-      const result = await this.youtubeApi.getTranscript(videoId, {
-        languages: options.languages || ['en', 'auto']
-      });
-      
-      if (result) {
-        this.logger.info(`Local transcript extracted successfully: ${result.length} characters`);
-        return result;
+      // Try RapidAPI third
+      if (this.rapidApiService) {
+        try {
+          console.log('⚡ Trying RapidAPI Transcript Service...');
+          const rapidResult = await this.rapidApiService.getTranscript(videoId, options);
+          
+          if (rapidResult) {
+            this.logger.info(`RapidAPI transcript extracted successfully: ${rapidResult.length} characters`);
+            return rapidResult;
+          }
+        } catch (rapidError) {
+          console.log(`❌ RapidAPI failed: ${rapidError.message}`);
+          console.log('⏳ Falling back to next service...');
+        }
       }
       
+      // Try local Python service last (development only)
+      if (this.youtubeApi) {
+        try {
+          console.log('🐍 Trying Local Python Service...');
+          const result = await this.youtubeApi.getTranscript(videoId, {
+            languages: options.languages || ['en', 'auto']
+          });
+          
+          if (result) {
+            this.logger.info(`Local Python transcript extracted successfully: ${result.length} characters`);
+            return result;
+          }
+        } catch (pythonError) {
+          console.log(`❌ Local Python failed: ${pythonError.message}`);
+        }
+      }
+      
+      // If all services failed
+      const availableServices = [
+        this.transcriptIOService && 'YouTube Transcript IO',
+        this.vpsClient && 'VPS API', 
+        this.rapidApiService && 'RapidAPI',
+        this.youtubeApi && 'Python API'
+      ].filter(Boolean);
+      
+      this.logger.warn(`All transcript sources exhausted. Tried: ${availableServices.join(', ')}`);
       return null;
+      
     } catch (error) {
       this.logger.error('Transcript extraction failed', error);
       this.logger.warn('All transcript sources exhausted');
@@ -90,21 +193,41 @@ class TranscriptService {
   async healthCheck() {
     const checks = {};
     
+    // Check YouTube Transcript IO if available
+    if (this.transcriptIOService) {
+      checks.transcriptIO = await this.transcriptIOService.healthCheck();
+    }
+    
     // Check VPS client if available
     if (this.vpsClient) {
       checks.vps = await this.vpsClient.healthCheck();
     }
     
-    // Check local service
-    checks.local = await this.youtubeApi.healthCheck();
+    // Check RapidAPI if available
+    if (this.rapidApiService) {
+      checks.rapidAPI = await this.rapidApiService.healthCheck();
+    }
     
-    const hasHealthy = Object.values(checks).some(check => check.status === 'healthy');
+    // Check local service if available
+    if (this.youtubeApi) {
+      checks.local = await this.youtubeApi.healthCheck();
+    }
+    
+    const hasHealthy = Object.values(checks).some(check => 
+      check.status === 'healthy' || check.status === 'ok'
+    );
+    
+    const primaryService = this.transcriptIOService ? 'YouTube Transcript IO' :
+                          this.vpsClient ? 'VPS API' :
+                          this.rapidApiService ? 'RapidAPI' :
+                          this.youtubeApi ? 'Local Python' : 'None';
     
     return {
       status: hasHealthy ? 'healthy' : 'unhealthy',
       service: 'Multi-source Transcript Service',
       sources: checks,
-      primary: this.vpsClient ? 'VPS API' : 'Local Service',
+      primary: primaryService,
+      available: Object.keys(checks).length,
       timestamp: new Date().toISOString()
     };
   }
