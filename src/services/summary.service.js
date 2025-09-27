@@ -63,13 +63,14 @@ class SummaryService {
   }
 
   async generateSummary(transcript, videoTitle, videoUrl, customPrompt = null) {
-    const cacheKey = `summary_${this.hashString(transcript + (customPrompt || ''))}`;
+    // Include model in cache key to ensure different models generate separate cache entries
+    const cacheKey = `summary_${this.config.model}_${this.hashString(transcript + (customPrompt || ''))}`;
     
     // Check cache first (if available)
     if (this.cache) {
       const cached = await this.cache.get(cacheKey);
       if (cached) {
-        this.logger.debug('Using cached summary');
+        this.logger.debug(`Using cached summary (model: ${this.config.model})`);
         return cached;
       }
     }
@@ -88,6 +89,9 @@ class SummaryService {
       const systemMessage = customPrompt 
         ? `You are an advanced content summarizer. Follow the user's specific instructions exactly. ${isJsonRequested ? 'If the prompt asks for JSON format, respond with valid JSON only - no extra text, code blocks, or formatting.' : 'Respond in the format requested by the user\'s prompt.'}`
         : 'You are a helpful assistant that creates concise, informative summaries of YouTube video transcripts. Always respond in plain text format. Do not use JSON, code blocks, or any special formatting unless explicitly requested.';
+      
+      // Log which model is being used for debugging
+      this.logger.info(`Generating summary with model: ${this.config.model}`);
       
       const response = await this.openai.chat.completions.create({
         model: this.config.model,
