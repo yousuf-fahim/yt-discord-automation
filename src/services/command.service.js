@@ -298,13 +298,26 @@ class CommandService {
           // Reload prompts for all channels
           const results = [];
           
-          // Summary prompts (1-3)
-          for (let i = 1; i <= 3; i++) {
-            try {
-              const prompt = await discordService.getCustomPromptFromChannel(`yt-summary-prompt-${i}`);
-              results.push(`✅ Summary Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
-            } catch (error) {
-              results.push(`❌ Summary Prompt ${i}: ${error.message}`);
+          // Summary prompts (dynamically detect all)
+          const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+          if (guild) {
+            const summaryPromptChannels = guild.channels.cache.filter(
+              ch => ch.name && ch.name.startsWith(discordService.config.prefixes.summaryPrompt)
+            );
+            
+            if (summaryPromptChannels.size === 0) {
+              results.push(`⚠️ No summary prompt channels found`);
+            } else {
+              for (const [channelId, channel] of summaryPromptChannels) {
+                try {
+                  const prompt = await discordService.getCustomPromptFromChannel(channel.name);
+                  const suffix = channel.name.replace(discordService.config.prefixes.summaryPrompt, '');
+                  results.push(`✅ Summary Prompt ${suffix}: ${prompt ? 'Loaded' : 'Not found'}`);
+                } catch (error) {
+                  const suffix = channel.name.replace(discordService.config.prefixes.summaryPrompt, '');
+                  results.push(`❌ Summary Prompt ${suffix}: ${error.message}`);
+                }
+              }
             }
           }
           
@@ -312,9 +325,29 @@ class CommandService {
           for (let i = 1; i <= 3; i++) {
             try {
               const prompt = await discordService.getCustomPromptFromChannel(`yt-daily-report-prompt-${i}`);
-              results.push(`✅ Report Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
+              results.push(`✅ Daily Report Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
             } catch (error) {
-              results.push(`❌ Report Prompt ${i}: ${error.message}`);
+              results.push(`❌ Daily Report Prompt ${i}: ${error.message}`);
+            }
+          }
+          
+          // Weekly report prompts (1-3)
+          for (let i = 1; i <= 3; i++) {
+            try {
+              const prompt = await discordService.getCustomPromptFromChannel(`yt-weekly-report-prompt-${i}`);
+              results.push(`✅ Weekly Report Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
+            } catch (error) {
+              results.push(`❌ Weekly Report Prompt ${i}: ${error.message}`);
+            }
+          }
+          
+          // Monthly report prompts (1-3)
+          for (let i = 1; i <= 3; i++) {
+            try {
+              const prompt = await discordService.getCustomPromptFromChannel(`yt-monthly-report-prompt-${i}`);
+              results.push(`✅ Monthly Report Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
+            } catch (error) {
+              results.push(`❌ Monthly Report Prompt ${i}: ${error.message}`);
             }
           }
           

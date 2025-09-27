@@ -280,20 +280,42 @@ class DiscordService {
       console.log(`🎯 Getting title for video ${videoId}`);
       console.log(`📝 Message content: "${messageContent}"`);
       
-      // First try to get title from YouTube Transcript IO API (most reliable)
+      // First try direct YouTube Transcript IO API (most reliable)
+      try {
+        if (process.env.YOUTUBE_TRANSCRIPT_IO_TOKEN) {
+          console.log(`🔄 Trying direct YouTube Transcript IO API...`);
+          const YouTubeTranscriptIOService = require('./youtube-transcript-io.service');
+          const ioService = new YouTubeTranscriptIOService();
+          const apiTitle = await ioService.getVideoTitle(videoId);
+          console.log(`🎬 Direct Transcript API title result: "${apiTitle}"`);
+          if (apiTitle && apiTitle.length > 3) {
+            const sanitized = this.sanitizeFilename(apiTitle);
+            if (sanitized) {
+              console.log(`✅ Using Direct Transcript API title: "${sanitized}"`);
+              return sanitized;
+            }
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️ Direct Transcript API title failed: ${error.message}`);
+      }
+      
+      // Try via service manager (fallback)
       try {
         const transcriptService = this.serviceManager.getService('transcript');
         if (transcriptService && transcriptService.transcriptIO) {
           const apiTitle = await transcriptService.transcriptIO.getVideoTitle(videoId);
-          console.log(`🎬 Transcript API title result: "${apiTitle}"`);
-          if (apiTitle) {
+          console.log(`🎬 Service Manager Transcript API title result: "${apiTitle}"`);
+          if (apiTitle && apiTitle.length > 3) {
             const sanitized = this.sanitizeFilename(apiTitle);
-            console.log(`✅ Using Transcript API title: "${sanitized}"`);
-            return sanitized;
+            if (sanitized) {
+              console.log(`✅ Using Service Manager Transcript API title: "${sanitized}"`);
+              return sanitized;
+            }
           }
         }
       } catch (error) {
-        console.log(`⚠️ Transcript API title failed: ${error.message}`);
+        console.log(`⚠️ Service Manager Transcript API title failed: ${error.message}`);
       }
       
       // Fallback to page scraping
@@ -301,20 +323,24 @@ class DiscordService {
       const { getYouTubeTitle } = require('../../utils/youtube-title');
       const scrapedTitle = await getYouTubeTitle(videoId);
       console.log(`🔍 Scraped title result: "${scrapedTitle}"`);
-      if (scrapedTitle) {
+      if (scrapedTitle && scrapedTitle.length > 3) {
         const sanitized = this.sanitizeFilename(scrapedTitle);
-        console.log(`✅ Using scraped title: "${sanitized}"`);
-        return sanitized;
+        if (sanitized) {
+          console.log(`✅ Using scraped title: "${sanitized}"`);
+          return sanitized;
+        }
       }
       
       // Fallback to extracting from message
       console.log(`🔄 Falling back to message extraction...`);
       const extractedTitle = this.extractTitleFromMessage(messageContent);
       console.log(`📑 Extracted from message: "${extractedTitle}"`);
-      if (extractedTitle) {
+      if (extractedTitle && extractedTitle.length > 3) {
         const sanitized = this.sanitizeFilename(extractedTitle);
-        console.log(`✅ Using extracted title: "${sanitized}"`);
-        return sanitized;
+        if (sanitized) {
+          console.log(`✅ Using extracted title: "${sanitized}"`);
+          return sanitized;
+        }
       }
       
       // Final fallback to video ID
@@ -335,11 +361,18 @@ class DiscordService {
   }
 
   sanitizeFilename(title) {
-    // Remove invalid characters for filenames
+    if (!title || title.length < 3) {
+      return null; // Return null for invalid titles so fallback can be used
+    }
+    
+    // Remove invalid characters for filenames and clean up
     return title
-      .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
-      .replace(/\s+/g, '_') // Replace spaces with underscores
-      .substring(0, 100) // Limit length
+      .replace(/[<>:"/\\|?*]/g, '') // Remove invalid filesystem characters
+      .replace(/[^\w\s\-\(\)\.]/g, '') // Keep only word chars, spaces, hyphens, parentheses, and dots
+      .replace(/\s+/g, '-') // Replace spaces with hyphens (more readable than underscores)
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+      .substring(0, 150) // Allow longer titles but still reasonable
       .trim();
   }
 
@@ -407,18 +440,21 @@ ${transcript}`;
       // Process each summary channel only if it has a corresponding prompt channel with content
       for (const [channelId, channel] of summaryChannels) {
         try {
-          // Extract the number from the summary channel (e.g., yt-summaries-1 -> 1)
-          const channelNumber = channel.name.replace(this.config.prefixes.summariesOutput, '');
-          if (!channelNumber || !/^\d+$/.test(channelNumber)) continue;
+          // Extract the suffix from the summary channel (e.g., yt-summaries-1 -> 1, yt-summaries-dev -> dev)
+          const channelSuffix = channel.name.replace(this.config.prefixes.summariesOutput, '');
+          if (!channelSuffix) {
+            this.logger.info(`Invalid channel name format: ${channel.name}, skipping`);
+            continue;
+          }
           
           // Find corresponding prompt channel
-          const promptChannelName = `${this.config.prefixes.summaryPrompt}${channelNumber}`;
+          const promptChannelName = `${this.config.prefixes.summaryPrompt}${channelSuffix}`;
           const promptChannel = targetGuild.channels.cache.find(
             ch => ch.name === promptChannelName
           );
           
           if (!promptChannel) {
-            this.logger.info(`No prompt channel found for ${channel.name}, skipping`);
+            this.logger.info(`No prompt channel found for ${channel.name} (looking for ${promptChannelName}), skipping`);
             continue;
           }
           
@@ -783,27 +819,85 @@ ${transcript}`;
         });
       });
 
-      // Check summary output channels
-      for (let i = 1; i <= 3; i++) {
-        const name = `yt-summaries-${i}`;
-        const channel = guild.channels.cache.find(ch => ch.name === name);
+      // Check summary output channels (dynamically detect all)
+      const summaryOutputChannels = guild.channels.cache.filter(
+        ch => ch.name && ch.name.startsWith(this.config.prefixes.summariesOutput)
+      );
+      
+      if (summaryOutputChannels.size === 0) {
         channels.push({
-          name,
+          name: 'yt-summaries-*',
           type: 'output',
-          active: !!channel,
-          lastActivity: channel ? 'Recently' : 'Channel not found'
+          active: false,
+          lastActivity: 'No summary output channels found'
+        });
+      } else {
+        summaryOutputChannels.forEach(channel => {
+          channels.push({
+            name: channel.name,
+            type: 'output',
+            active: true,
+            lastActivity: 'Recently'
+          });
         });
       }
 
-      // Check report channels
+      // Check daily report channels
       for (let i = 1; i <= 3; i++) {
         const name = i === 1 ? 'daily-report' : `daily-report-${i}`;
         const channel = guild.channels.cache.find(ch => ch.name === name);
         channels.push({
           name,
-          type: 'reports',
+          type: 'daily-reports',
           active: !!channel,
           lastActivity: channel ? 'Daily at 18:00 CEST' : 'Channel not found'
+        });
+      }
+      
+      // Check weekly report channels
+      for (let i = 1; i <= 3; i++) {
+        const name = i === 1 ? 'weekly-report' : `weekly-report-${i}`;
+        const channel = guild.channels.cache.find(ch => ch.name === name);
+        channels.push({
+          name,
+          type: 'weekly-reports',
+          active: !!channel,
+          lastActivity: channel ? 'Weekly on Sundays' : 'Channel not found'
+        });
+      }
+      
+      // Check monthly report channels
+      for (let i = 1; i <= 3; i++) {
+        const name = i === 1 ? 'monthly-report' : `monthly-report-${i}`;
+        const channel = guild.channels.cache.find(ch => ch.name === name);
+        channels.push({
+          name,
+          type: 'monthly-reports',
+          active: !!channel,
+          lastActivity: channel ? 'Monthly on 1st' : 'Channel not found'
+        });
+      }
+      
+      // Check summary prompt channels (dynamically detect all)
+      const summaryPromptChannels = guild.channels.cache.filter(
+        ch => ch.name && ch.name.startsWith(this.config.prefixes.summaryPrompt)
+      );
+      
+      if (summaryPromptChannels.size === 0) {
+        channels.push({
+          name: 'yt-summary-prompt-*',
+          type: 'prompts',
+          active: false,
+          lastActivity: 'No summary prompt channels found'
+        });
+      } else {
+        summaryPromptChannels.forEach(channel => {
+          channels.push({
+            name: channel.name,
+            type: 'prompts',
+            active: true,
+            lastActivity: 'Contains prompts'
+          });
         });
       }
       
@@ -847,22 +941,44 @@ ${transcript}`;
 
   async validateAllPrompts() {
     const results = [];
+    const guild = this.client.guilds.cache.get(this.config.guildId);
     
-    // Check summary prompts
-    for (let i = 1; i <= 3; i++) {
-      try {
-        const prompt = await this.getCustomPromptFromChannel(`yt-summary-prompt-${i}`);
-        results.push({
-          channel: `yt-summary-prompt-${i}`,
-          valid: !!prompt,
-          message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
-        });
-      } catch (error) {
-        results.push({
-          channel: `yt-summary-prompt-${i}`,
-          valid: false,
-          message: error.message
-        });
+    if (!guild) {
+      results.push({
+        channel: 'guild',
+        valid: false,
+        message: 'Guild not found'
+      });
+      return results;
+    }
+    
+    // Check summary prompts (dynamically detect all)
+    const summaryPromptChannels = guild.channels.cache.filter(
+      ch => ch.name && ch.name.startsWith(this.config.prefixes.summaryPrompt)
+    );
+    
+    if (summaryPromptChannels.size === 0) {
+      results.push({
+        channel: 'summary-prompts',
+        valid: false,
+        message: 'No summary prompt channels found'
+      });
+    } else {
+      for (const [channelId, channel] of summaryPromptChannels) {
+        try {
+          const prompt = await this.getCustomPromptFromChannel(channel.name);
+          results.push({
+            channel: channel.name,
+            valid: !!prompt,
+            message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
+          });
+        } catch (error) {
+          results.push({
+            channel: channel.name,
+            valid: false,
+            message: error.message
+          });
+        }
       }
     }
     
@@ -878,6 +994,42 @@ ${transcript}`;
       } catch (error) {
         results.push({
           channel: `yt-daily-report-prompt-${i}`,
+          valid: false,
+          message: error.message
+        });
+      }
+    }
+    
+    // Check weekly report prompts
+    for (let i = 1; i <= 3; i++) {
+      try {
+        const prompt = await this.getCustomPromptFromChannel(`yt-weekly-report-prompt-${i}`);
+        results.push({
+          channel: `yt-weekly-report-prompt-${i}`,
+          valid: !!prompt,
+          message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
+        });
+      } catch (error) {
+        results.push({
+          channel: `yt-weekly-report-prompt-${i}`,
+          valid: false,
+          message: error.message
+        });
+      }
+    }
+    
+    // Check monthly report prompts
+    for (let i = 1; i <= 3; i++) {
+      try {
+        const prompt = await this.getCustomPromptFromChannel(`yt-monthly-report-prompt-${i}`);
+        results.push({
+          channel: `yt-monthly-report-prompt-${i}`,
+          valid: !!prompt,
+          message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
+        });
+      } catch (error) {
+        results.push({
+          channel: `yt-monthly-report-prompt-${i}`,
           valid: false,
           message: error.message
         });

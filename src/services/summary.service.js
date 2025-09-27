@@ -39,11 +39,17 @@ class SummaryService {
 
     try {
       const prompt = customPrompt 
-        ? this.buildCustomPrompt(transcript, videoTitle, customPrompt)
+        ? this.buildCustomPrompt(customPrompt, transcript, videoTitle, videoUrl)
         : this.buildSummaryPrompt(transcript, videoTitle);
       
+      const isJsonRequested = customPrompt && (
+        customPrompt.toLowerCase().includes('json') || 
+        customPrompt.toLowerCase().includes('{') || 
+        customPrompt.toLowerCase().includes('}')
+      );
+      
       const systemMessage = customPrompt 
-        ? 'You are an advanced content summarizer. Follow the user\'s specific instructions exactly. Respond in the format requested by the user\'s prompt. Do not add JSON formatting, code blocks, or extra markup unless the prompt explicitly asks for it.'
+        ? `You are an advanced content summarizer. Follow the user's specific instructions exactly. ${isJsonRequested ? 'If the prompt asks for JSON format, respond with valid JSON only - no extra text, code blocks, or formatting.' : 'Respond in the format requested by the user\'s prompt.'}`
         : 'You are a helpful assistant that creates concise, informative summaries of YouTube video transcripts. Always respond in plain text format. Do not use JSON, code blocks, or any special formatting unless explicitly requested.';
       
       const response = await this.openai.chat.completions.create({
@@ -81,7 +87,7 @@ class SummaryService {
       }
       
       // Format the output if it's JSON from a custom prompt
-      const formattedSummary = this.formatSummaryOutput(summary, videoTitle, isCustomPrompt);
+      const formattedSummary = this.formatSummaryOutput(summary, videoTitle, isCustomPrompt, customPrompt);
       
       // Cache the result
       await this.cache.set(cacheKey, formattedSummary);
@@ -165,14 +171,26 @@ VIDEO TITLE: ${videoTitle}
 VIDEO URL: ${videoUrl}`;
   }
 
-  formatSummaryOutput(summary, videoTitle, isCustomPrompt) {
-    // For custom prompts, follow the prompt instructions exactly - don't modify output
-    if (isCustomPrompt) {
-      return summary.trim();
+  formatSummaryOutput(summary, videoTitle, isCustomPrompt, customPrompt = null) {
+    const trimmed = summary.trim();
+    
+    // For custom prompts, check if JSON was requested
+    if (isCustomPrompt && customPrompt) {
+      const isJsonRequested = (
+        customPrompt.toLowerCase().includes('json') || 
+        customPrompt.toLowerCase().includes('{') || 
+        customPrompt.toLowerCase().includes('}')
+      );
+      
+      // If JSON was requested, ensure we return clean JSON
+      if (isJsonRequested && this.isJsonResponse(trimmed)) {
+        // Clean up any markdown formatting that might wrap the JSON
+        const cleanJson = trimmed.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+        return cleanJson;
+      }
     }
     
-    // For regular summaries, return as-is
-    return summary;
+    return trimmed;
   }
 
   isJsonResponse(text) {

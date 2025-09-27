@@ -81,10 +81,14 @@ Set up the following channels in your Discord server:
 
 - `#yt-uploads`: Where YouTube links are posted
 - `#yt-transcripts`: (Optional) Stores raw transcripts
-- `#yt-summary-prompt-1`, `#yt-summary-prompt-2`, etc.: Channels with pinned prompts for summarization
-- `#yt-summaries-1`, `#yt-summaries-2`, etc.: Where generated summaries are posted
+- `#yt-summary-prompt-*`: Channels with pinned prompts for summarization (e.g., yt-summary-prompt-1, yt-summary-prompt-dev)
+- `#yt-summaries-*`: Where generated summaries are posted (must match prompt suffix, e.g., yt-summaries-1, yt-summaries-dev)
 - `#yt-daily-report-prompt-1`, `#yt-daily-report-prompt-2`, etc.: Channels with pinned prompts for daily reports
+- `#yt-weekly-report-prompt-1`, `#yt-weekly-report-prompt-2`, etc.: Channels with pinned prompts for weekly reports
+- `#yt-monthly-report-prompt-1`, `#yt-monthly-report-prompt-2`, etc.: Channels with pinned prompts for monthly reports
 - `#daily-report`: Where daily reports are posted
+- `#weekly-report`, `#weekly-report-2`, etc.: Where weekly reports are posted
+- `#monthly-report`, `#monthly-report-2`, etc.: Where monthly reports are posted
 
 ### Installation
 
@@ -113,6 +117,8 @@ Set up the following channels in your Discord server:
    SUMMARY_PROMPT_PREFIX=yt-summary-prompt-
    SUMMARIES_OUTPUT_PREFIX=yt-summaries-
    DAILY_REPORT_PROMPT_PREFIX=yt-daily-report-prompt-
+   WEEKLY_REPORT_PROMPT_PREFIX=yt-weekly-report-prompt-
+   MONTHLY_REPORT_PROMPT_PREFIX=yt-monthly-report-prompt-
 
    # Daily Report Schedule (CEST)
    DAILY_REPORT_HOUR=18

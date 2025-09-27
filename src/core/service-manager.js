@@ -41,7 +41,9 @@ class ServiceManager extends EventEmitter {
         prefixes: {
           summaryPrompt: process.env.SUMMARY_PROMPT_PREFIX || 'yt-summary-prompt-',
           summariesOutput: process.env.SUMMARIES_OUTPUT_PREFIX || 'yt-summaries-',
-          dailyReportPrompt: process.env.DAILY_REPORT_PROMPT_PREFIX || 'yt-daily-report-prompt-'
+          dailyReportPrompt: process.env.DAILY_REPORT_PROMPT_PREFIX || 'yt-daily-report-prompt-',
+          weeklyReportPrompt: process.env.WEEKLY_REPORT_PROMPT_PREFIX || 'yt-weekly-report-prompt-',
+          monthlyReportPrompt: process.env.MONTHLY_REPORT_PROMPT_PREFIX || 'yt-monthly-report-prompt-'
         },
         schedule: {
           dailyReportHour: parseInt(process.env.DAILY_REPORT_HOUR) || 18,
