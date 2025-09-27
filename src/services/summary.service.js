@@ -5,15 +5,29 @@
 const { OpenAI } = require('openai');
 
 class SummaryService {
-  constructor(serviceManager, dependencies) {
-    this.serviceManager = serviceManager;
-    this.cache = dependencies.cache;
-    this.logger = serviceManager.logger;
-    this.config = serviceManager.config.openai;
+  constructor(config, openai) {
+    this.config = config;
+    this.openai = openai;
+  }
+
+  // Helper method to get the correct parameters based on model
+  getModelParameters(temperature = 0.3) {
+    const model = this.config.model.toLowerCase();
+    const params = {};
     
-    this.openai = new OpenAI({
-      apiKey: this.config.apiKey
-    });
+    // GPT-5 and o1/o3 models use max_completion_tokens and don't support custom temperature
+    if (model.includes('gpt-5') || model.includes('o1') || model.includes('o3')) {
+      // These models need more tokens for reasoning
+      const minTokens = model.includes('gpt-5') ? 1000 : 500;
+      params.max_completion_tokens = Math.max(this.config.maxTokens, minTokens);
+      // These models use default temperature only (reasoning models)
+    } else {
+      // Other models use max_tokens and support custom temperature
+      params.max_tokens = this.config.maxTokens;
+      params.temperature = temperature;
+    }
+    
+    return params;
   }
 
   async initialize() {
@@ -58,8 +72,7 @@ class SummaryService {
           { role: 'system', content: systemMessage },
           { role: 'user', content: prompt }
         ],
-        max_tokens: this.config.maxTokens,
-        temperature: 0.3
+        ...this.getModelParameters(0.3)
       });
 
       const summary = response.choices[0].message.content;
@@ -118,8 +131,7 @@ ${summariesData}`;
           { role: 'system', content: systemMessage },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: this.config.maxTokens,
-        temperature: 0.3
+        ...this.getModelParameters(0.3)
       });
 
       const report = response.choices[0].message.content;
@@ -232,8 +244,7 @@ VIDEO URL: ${videoUrl}`;
       const response = await this.openai.chat.completions.create({
         model: this.config.model,
         messages: messages,
-        max_tokens: this.config.maxTokens,
-        temperature: 0.7
+        ...this.getModelParameters(0.7)
       });
 
       const customReport = response.choices[0]?.message?.content?.trim();

@@ -35,6 +35,7 @@ class CommandService {
     this.registerClearCacheCommand();
     this.registerConfigCommand();
     this.registerSetModelCommand();
+    this.registerTestModelCommand();
     this.registerSetScheduleCommand();
     
     console.log(`✅ Registered ${this.commands.size} slash commands`);
@@ -97,7 +98,7 @@ class CommandService {
       .setDescription('Trigger daily report generation')
       .addStringOption(option =>
         option.setName('channel')
-          .setDescription('Specific channel number (1, 2, 3) or "all" for all channels')
+          .setDescription('Specific channel name or "all" for all channels')
           .setRequired(false)
       );
     
@@ -128,36 +129,42 @@ class CommandService {
               results.push(`❌ All Reports: ${error.message}`);
             }
           } else {
-            // For specific channels, we need to get the guild and channel
-            const channelNum = parseInt(channelOption);
-            if (isNaN(channelNum) || channelNum < 1 || channelNum > 3) {
-              throw new Error('Channel must be 1, 2, 3, or "all"');
+            // Get the guild
+            const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+            if (!guild) {
+              throw new Error('Guild not found');
+            }
+            
+            // Find all available prompt channels
+            const promptChannels = guild.channels.cache.filter(
+              ch => ch.name && ch.name.startsWith(discordService.config.prefixes.dailyReportPrompt)
+            );
+            
+            if (promptChannels.size === 0) {
+              throw new Error('No daily report prompt channels found');
+            }
+            
+            // Find the specific channel by name
+            const targetChannel = promptChannels.find(ch => 
+              ch.name === channelOption || 
+              ch.name.endsWith(`-${channelOption}`) ||
+              ch.name === `${discordService.config.prefixes.dailyReportPrompt}${channelOption}`
+            );
+            
+            if (!targetChannel) {
+              const availableChannels = Array.from(promptChannels.values()).map(ch => ch.name).join(', ');
+              throw new Error(`Channel "${channelOption}" not found. Available channels: ${availableChannels}`);
             }
             
             try {
-              // Get the guild
-              const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
-              if (!guild) {
-                throw new Error('Guild not found');
-              }
-              
-              // Find the prompt channel
-              const promptChannelName = `yt-daily-report-prompt-${channelNum}`;
-              const promptChannel = guild.channels.cache.find(ch => ch.name === promptChannelName);
-              
-              if (!promptChannel) {
-                throw new Error(`Prompt channel ${promptChannelName} not found`);
-              }
-              
-              // Generate a basic report for the prompt
-              const reportService = this.serviceManager.getService('report');
+              // Generate a basic report for the specific prompt channel
               const summaries = await reportService.getRecentSummaries();
               const defaultReport = reportService.buildReport(summaries);
               
-              await discordService.processDailyReportWithPrompt(guild, promptChannel, defaultReport);
-              results.push(`✅ Report ${channelNum}: Generated successfully`);
+              await discordService.processDailyReportWithPrompt(guild, targetChannel, defaultReport);
+              results.push(`✅ ${targetChannel.name}: Generated successfully`);
             } catch (error) {
-              results.push(`❌ Report ${channelNum}: ${error.message}`);
+              results.push(`❌ ${targetChannel.name}: ${error.message}`);
             }
           }
           
@@ -186,15 +193,10 @@ class CommandService {
           .setDescription('YouTube video URL to process')
           .setRequired(true)
       )
-      .addIntegerOption(option =>
+      .addStringOption(option =>
         option.setName('channel')
-          .setDescription('Summary channel number (1, 2, or 3)')
+          .setDescription('Summary channel name (e.g. "1" for yt-summaries-1)')
           .setRequired(false)
-          .addChoices(
-            { name: 'Channel 1', value: 1 },
-            { name: 'Channel 2', value: 2 },
-            { name: 'Channel 3', value: 3 }
-          )
       );
     
     this.commands.set('test-summary', {
@@ -204,9 +206,9 @@ class CommandService {
         
         try {
           const videoUrl = interaction.options.getString('video-url');
-          const channelNum = interaction.options.getInteger('channel') || 1;
+          const channelOption = interaction.options.getString('channel') || '1';
           
-          console.log(`🎯 Test summary via command: ${videoUrl} -> channel ${channelNum}`);
+          console.log(`🎯 Test summary via command: ${videoUrl} -> channel ${channelOption}`);
           
           // Extract video ID
           const videoId = this.extractVideoId(videoUrl);
@@ -236,16 +238,31 @@ class CommandService {
             throw new Error('Guild not found');
           }
 
-          // Find the summary and prompt channels
-          const summaryChannelName = `yt-summaries-${channelNum}`;
-          const promptChannelName = `yt-summary-prompt-${channelNum}`;
+          // Find available summary channels
+          const summaryChannels = guild.channels.cache.filter(
+            ch => ch.name && ch.name.startsWith(discordService.config.prefixes.summariesOutput)
+          );
           
-          const summaryChannel = guild.channels.cache.find(ch => ch.name === summaryChannelName);
+          if (summaryChannels.size === 0) {
+            throw new Error('No summary output channels found');
+          }
+          
+          // Find the specific summary channel
+          let summaryChannel = summaryChannels.find(ch => 
+            ch.name.endsWith(`-${channelOption}`) ||
+            ch.name === `${discordService.config.prefixes.summariesOutput}${channelOption}`
+          );
+          
+          // If not found, use the first available channel
+          if (!summaryChannel) {
+            summaryChannel = summaryChannels.first();
+            console.log(`Channel "${channelOption}" not found, using ${summaryChannel.name}`);
+          }
+          
+          // Find corresponding prompt channel
+          const promptChannelName = summaryChannel.name.replace('summaries', 'summary-prompt');
           const promptChannel = guild.channels.cache.find(ch => ch.name === promptChannelName);
           
-          if (!summaryChannel) {
-            throw new Error(`Summary channel ${summaryChannelName} not found`);
-          }
           if (!promptChannel) {
             throw new Error(`Prompt channel ${promptChannelName} not found`);
           }
@@ -264,7 +281,7 @@ class CommandService {
             .setTitle('🎯 Test Summary Complete')
             .addFields(
               { name: 'Video ID', value: videoId, inline: true },
-              { name: 'Channel', value: channelNum.toString(), inline: true },
+              { name: 'Channel Used', value: summaryChannel.name, inline: true },
               { name: 'Status', value: '✅ Processed successfully', inline: false }
             )
             .setColor(0x51cf66)
@@ -324,33 +341,63 @@ class CommandService {
             }
           }
           
-          // Daily report prompts (1-3)
-          for (let i = 1; i <= 3; i++) {
-            try {
-              const prompt = await discordService.getCustomPromptFromChannel(`yt-daily-report-prompt-${i}`);
-              results.push(`✅ Daily Report Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
-            } catch (error) {
-              results.push(`❌ Daily Report Prompt ${i}: ${error.message}`);
+          // Daily report prompts (dynamic detection)
+          const dailyReportPromptChannels = guild.channels.cache.filter(
+            ch => ch.name && ch.name.startsWith(discordService.config.prefixes.dailyReportPrompt)
+          );
+          
+          if (dailyReportPromptChannels.size === 0) {
+            results.push(`⚠️ Daily Report Prompts: No channels found`);
+          } else {
+            for (const [channelId, channel] of dailyReportPromptChannels) {
+              try {
+                const prompt = await discordService.getCustomPromptFromChannel(channel.name);
+                const suffix = channel.name.replace(discordService.config.prefixes.dailyReportPrompt, '');
+                results.push(`✅ Daily Report Prompt ${suffix}: ${prompt ? 'Loaded' : 'Not found'}`);
+              } catch (error) {
+                const suffix = channel.name.replace(discordService.config.prefixes.dailyReportPrompt, '');
+                results.push(`❌ Daily Report Prompt ${suffix}: ${error.message}`);
+              }
             }
           }
           
-          // Weekly report prompts (1-3)
-          for (let i = 1; i <= 3; i++) {
-            try {
-              const prompt = await discordService.getCustomPromptFromChannel(`yt-weekly-report-prompt-${i}`);
-              results.push(`✅ Weekly Report Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
-            } catch (error) {
-              results.push(`❌ Weekly Report Prompt ${i}: ${error.message}`);
+          // Weekly report prompts (dynamic detection)
+          const weeklyReportPromptChannels = guild.channels.cache.filter(
+            ch => ch.name && ch.name.startsWith('yt-weekly-report-prompt-')
+          );
+          
+          if (weeklyReportPromptChannels.size === 0) {
+            results.push(`⚠️ Weekly Report Prompts: No channels found`);
+          } else {
+            for (const [channelId, channel] of weeklyReportPromptChannels) {
+              try {
+                const prompt = await discordService.getCustomPromptFromChannel(channel.name);
+                const suffix = channel.name.replace('yt-weekly-report-prompt-', '');
+                results.push(`✅ Weekly Report Prompt ${suffix}: ${prompt ? 'Loaded' : 'Not found'}`);
+              } catch (error) {
+                const suffix = channel.name.replace('yt-weekly-report-prompt-', '');
+                results.push(`❌ Weekly Report Prompt ${suffix}: ${error.message}`);
+              }
             }
           }
           
-          // Monthly report prompts (1-3)
-          for (let i = 1; i <= 3; i++) {
-            try {
-              const prompt = await discordService.getCustomPromptFromChannel(`yt-monthly-report-prompt-${i}`);
-              results.push(`✅ Monthly Report Prompt ${i}: ${prompt ? 'Loaded' : 'Not found'}`);
-            } catch (error) {
-              results.push(`❌ Monthly Report Prompt ${i}: ${error.message}`);
+          // Monthly report prompts (dynamic detection)
+          const monthlyReportPromptChannels = guild.channels.cache.filter(
+            ch => ch.name && ch.name.startsWith('yt-monthly-report-prompt-')
+          );
+          
+          if (monthlyReportPromptChannels.size === 0) {
+            results.push(`⚠️ Monthly Report Prompts: No channels found`);
+          } else {
+            for (const [channelId, channel] of monthlyReportPromptChannels) {
+              try {
+                const prompt = await discordService.getCustomPromptFromChannel(channel.name);
+                const suffix = channel.name.replace('yt-monthly-report-prompt-', '');
+                results.push(`✅ Monthly Report Prompt ${suffix}: ${prompt ? 'Loaded' : 'Not found'}`);
+              } catch (error) {
+                const suffix = channel.name.replace('yt-monthly-report-prompt-', '');
+                results.push(`❌ Monthly Report Prompt ${suffix}: ${error.message}`);
+              }
             }
           }
           
@@ -963,10 +1010,18 @@ class CommandService {
               },
               {
                 name: '📊 Report Schedules',
-                value: `**Weekly**: Sundays 19:00 CEST\n**Monthly**: 1st of month 20:00 CEST`,
+                value: `**Weekly**: ${config.discord.schedule.weeklyReportDay !== undefined ? 
+                  `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][config.discord.schedule.weeklyReportDay]} ${config.discord.schedule.weeklyReportHour}:${config.discord.schedule.weeklyReportMinute.toString().padStart(2, '0')} CEST` : 
+                  'Sundays 19:00 CEST'}\n**Monthly**: 1st of month 20:00 CEST`,
                 inline: true
+              },
+              {
+                name: '🚀 Available Advanced Models',
+                value: '**GPT-5**: Latest generation models\n**o3/o1**: Advanced reasoning models\n**GPT-4o**: Multimodal capabilities\n\nUse `/test-model` to test, `/set-model` to switch',
+                inline: false
               }
             )
+            .setFooter({ text: 'Use /test-model to safely test new models before switching' })
             .setTimestamp();
           
           await interaction.editReply({ embeds: [embed] });
@@ -987,11 +1042,19 @@ class CommandService {
           .setDescription('Select OpenAI model')
           .setRequired(true)
           .addChoices(
-            { name: 'GPT-4 Turbo (Recommended)', value: 'gpt-4-turbo' },
-            { name: 'GPT-4', value: 'gpt-4' },
-            { name: 'GPT-4o', value: 'gpt-4o' },
+            { name: '🚀 GPT-5 (Latest)', value: 'gpt-5' },
+            { name: '🚀 GPT-5 Mini', value: 'gpt-5-mini' },
+            { name: '🚀 GPT-5 Nano', value: 'gpt-5-nano' },
+            { name: '🧠 o3 (Advanced Reasoning)', value: 'o3' },
+            { name: '🧠 o3 Mini', value: 'o3-mini' },
+            { name: '🧠 o1 Pro (Reasoning Pro)', value: 'o1-pro' },
+            { name: '🧠 o1 (Reasoning)', value: 'o1' },
+            { name: '🧠 o1 Mini', value: 'o1-mini' },
+            { name: 'GPT-4o (Multimodal)', value: 'gpt-4o' },
             { name: 'GPT-4o Mini', value: 'gpt-4o-mini' },
-            { name: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' }
+            { name: 'GPT-4 Turbo (Stable)', value: 'gpt-4-turbo' },
+            { name: 'GPT-4', value: 'gpt-4' },
+            { name: 'GPT-3.5 Turbo (Fast)', value: 'gpt-3.5-turbo' }
           )
       );
     
@@ -1047,10 +1110,111 @@ class CommandService {
     });
   }
 
+  registerTestModelCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('test-model')
+      .setDescription('Test a model with a sample summary to verify it works')
+      .addStringOption(option =>
+        option.setName('model')
+          .setDescription('Model to test')
+          .setRequired(true)
+          .addChoices(
+            { name: '🚀 GPT-5 (Latest)', value: 'gpt-5' },
+            { name: '🚀 GPT-5 Mini', value: 'gpt-5-mini' },
+            { name: '🚀 GPT-5 Nano', value: 'gpt-5-nano' },
+            { name: '🧠 o3 (Advanced Reasoning)', value: 'o3' },
+            { name: '🧠 o3 Mini', value: 'o3-mini' },
+            { name: '🧠 o1 Pro (Reasoning Pro)', value: 'o1-pro' },
+            { name: '🧠 o1 (Reasoning)', value: 'o1' },
+            { name: '🧠 o1 Mini', value: 'o1-mini' },
+            { name: 'GPT-4o (Multimodal)', value: 'gpt-4o' },
+            { name: 'GPT-4o Mini', value: 'gpt-4o-mini' },
+            { name: 'GPT-4 Turbo (Stable)', value: 'gpt-4-turbo' },
+            { name: 'GPT-4', value: 'gpt-4' },
+            { name: 'GPT-3.5 Turbo (Fast)', value: 'gpt-3.5-turbo' }
+          )
+      );
+    
+    this.commands.set('test-model', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const testModel = interaction.options.getString('model');
+          const summaryService = this.serviceManager.getService('summary');
+          
+          if (!summaryService) {
+            throw new Error('Summary service not available');
+          }
+          
+          // Test with a sample transcript
+          const testTranscript = "This is a test video about artificial intelligence and machine learning. The video explains basic concepts of AI, discusses neural networks, and provides examples of how AI is used in everyday applications like recommendation systems and voice assistants.";
+          
+          const startTime = Date.now();
+          
+          // Temporarily test the model
+          const originalModel = summaryService.config.model;
+          summaryService.config.model = testModel;
+          
+          try {
+            const testSummary = await summaryService.generateSummary(testTranscript, 'test-video-id');
+            const responseTime = Date.now() - startTime;
+            
+            // Restore original model
+            summaryService.config.model = originalModel;
+            
+            const embed = new EmbedBuilder()
+              .setTitle('✅ Model Test Successful')
+              .setColor(0x00AE86)
+              .addFields(
+                { name: 'Model Tested', value: testModel, inline: true },
+                { name: 'Response Time', value: `${responseTime}ms`, inline: true },
+                { name: 'Current Model', value: originalModel, inline: true },
+                { name: 'Test Summary', value: testSummary.length > 1000 ? testSummary.substring(0, 1000) + '...' : testSummary }
+              )
+              .setFooter({ text: 'Use /set-model to switch to this model if satisfied with the test' })
+              .setTimestamp();
+            
+            await interaction.editReply({ embeds: [embed] });
+            
+          } catch (testError) {
+            // Restore original model on error
+            summaryService.config.model = originalModel;
+            throw testError;
+          }
+          
+        } catch (error) {
+          console.error('Error testing model:', error);
+          
+          const embed = new EmbedBuilder()
+            .setTitle('❌ Model Test Failed')
+            .setColor(0xFF0000)
+            .addFields(
+              { name: 'Error', value: error.message },
+              { name: 'Possible Causes', value: '• Model not available in your API tier\n• API rate limits\n• Invalid model name\n• Insufficient credits' }
+            )
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+        }
+      }
+    });
+  }
+
   registerSetScheduleCommand() {
     const command = new SlashCommandBuilder()
       .setName('set-schedule')
-      .setDescription('Update daily report schedule')
+      .setDescription('Update report schedules (daily or weekly)')
+      .addStringOption(option =>
+        option.setName('report-type')
+          .setDescription('Which report schedule to update')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Daily Reports', value: 'daily' },
+            { name: 'Weekly Reports', value: 'weekly' }
+          )
+      )
       .addIntegerOption(option =>
         option.setName('hour')
           .setDescription('Hour (0-23, CEST timezone)')
@@ -1064,6 +1228,13 @@ class CommandService {
           .setRequired(false)
           .setMinValue(0)
           .setMaxValue(59)
+      )
+      .addIntegerOption(option =>
+        option.setName('day')
+          .setDescription('Day of week for weekly reports (0=Sunday, 1=Monday, etc.)')
+          .setRequired(false)
+          .setMinValue(0)
+          .setMaxValue(6)
       );
     
     this.commands.set('set-schedule', {
@@ -1072,47 +1243,101 @@ class CommandService {
         await interaction.deferReply();
         
         try {
+          const reportType = interaction.options.getString('report-type');
           const newHour = interaction.options.getInteger('hour');
           const newMinute = interaction.options.getInteger('minute') || 0;
+          const newDay = interaction.options.getInteger('day');
           
-          const oldHour = this.serviceManager.config.discord.schedule.dailyReportHour;
-          const oldMinute = this.serviceManager.config.discord.schedule.dailyReportMinute;
+          let embed;
           
-          // Update the configuration
-          this.serviceManager.config.discord.schedule.dailyReportHour = newHour;
-          this.serviceManager.config.discord.schedule.dailyReportMinute = newMinute;
-          
-          const embed = new EmbedBuilder()
-            .setTitle('⏰ Schedule Updated')
-            .setColor(0x00AE86)
-            .addFields(
-              {
-                name: 'Previous Schedule',
-                value: `${oldHour}:${oldMinute.toString().padStart(2, '0')} CEST`,
-                inline: true
-              },
-              {
-                name: 'New Schedule',
-                value: `${newHour}:${newMinute.toString().padStart(2, '0')} CEST`,
-                inline: true
-              },
-              {
-                name: '⚠️ Important Note',
-                value: 'Schedule change requires bot restart to take effect. The new schedule will be active after the next deployment.',
-                inline: false
-              },
-              {
-                name: 'Fixed Schedules',
-                value: '📊 **Weekly**: Sundays 19:00 CEST\n📅 **Monthly**: 1st of month 20:00 CEST\n\n*These cannot be changed via commands*',
-                inline: false
-              }
-            )
-            .setFooter({ text: 'For permanent changes, update DAILY_REPORT_HOUR and DAILY_REPORT_MINUTE environment variables.' })
-            .setTimestamp();
+          if (reportType === 'daily') {
+            // Handle daily report schedule update
+            const oldHour = this.serviceManager.config.discord.schedule.dailyReportHour;
+            const oldMinute = this.serviceManager.config.discord.schedule.dailyReportMinute;
+            
+            // Update the configuration
+            this.serviceManager.config.discord.schedule.dailyReportHour = newHour;
+            this.serviceManager.config.discord.schedule.dailyReportMinute = newMinute;
+            
+            embed = new EmbedBuilder()
+              .setTitle('⏰ Daily Schedule Updated')
+              .setColor(0x00AE86)
+              .addFields(
+                {
+                  name: 'Previous Daily Schedule',
+                  value: `${oldHour}:${oldMinute.toString().padStart(2, '0')} CEST`,
+                  inline: true
+                },
+                {
+                  name: 'New Daily Schedule',
+                  value: `${newHour}:${newMinute.toString().padStart(2, '0')} CEST`,
+                  inline: true
+                },
+                {
+                  name: '⚠️ Important Note',
+                  value: 'Schedule change requires bot restart to take effect. The new schedule will be active after the next deployment.',
+                  inline: false
+                }
+              )
+              .setFooter({ text: 'For permanent changes, update DAILY_REPORT_HOUR and DAILY_REPORT_MINUTE environment variables.' })
+              .setTimestamp();
+            
+            this.logger.info(`Daily report schedule changed from ${oldHour}:${oldMinute.toString().padStart(2, '0')} to ${newHour}:${newMinute.toString().padStart(2, '0')} CEST by ${interaction.user.tag}`);
+            
+          } else if (reportType === 'weekly') {
+            // Handle weekly report schedule update
+            const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const currentDay = newDay !== null ? newDay : 0; // Default to Sunday
+            
+            // Add weekly schedule to config if not exists
+            if (!this.serviceManager.config.discord.schedule.weeklyReportHour) {
+              this.serviceManager.config.discord.schedule.weeklyReportHour = 19;
+              this.serviceManager.config.discord.schedule.weeklyReportMinute = 0;
+              this.serviceManager.config.discord.schedule.weeklyReportDay = 0;
+            }
+            
+            const oldHour = this.serviceManager.config.discord.schedule.weeklyReportHour;
+            const oldMinute = this.serviceManager.config.discord.schedule.weeklyReportMinute;
+            const oldDay = this.serviceManager.config.discord.schedule.weeklyReportDay || 0;
+            
+            // Update the configuration
+            this.serviceManager.config.discord.schedule.weeklyReportHour = newHour;
+            this.serviceManager.config.discord.schedule.weeklyReportMinute = newMinute;
+            this.serviceManager.config.discord.schedule.weeklyReportDay = currentDay;
+            
+            embed = new EmbedBuilder()
+              .setTitle('📊 Weekly Schedule Updated')
+              .setColor(0x00AE86)
+              .addFields(
+                {
+                  name: 'Previous Weekly Schedule',
+                  value: `${dayName[oldDay]}s at ${oldHour}:${oldMinute.toString().padStart(2, '0')} CEST`,
+                  inline: true
+                },
+                {
+                  name: 'New Weekly Schedule',
+                  value: `${dayName[currentDay]}s at ${newHour}:${newMinute.toString().padStart(2, '0')} CEST`,
+                  inline: true
+                },
+                {
+                  name: '⚠️ Important Note',
+                  value: 'Weekly schedule change requires bot restart to take effect. The new schedule will be active after the next deployment.',
+                  inline: false
+                },
+                {
+                  name: '📅 Monthly Schedule',
+                  value: 'Monthly reports remain on 1st of month at 20:00 CEST (hardcoded)',
+                  inline: false
+                }
+              )
+              .setFooter({ text: 'Weekly schedules are temporary until restart. For permanent changes, update deployment configuration.' })
+              .setTimestamp();
+            
+            this.logger.info(`Weekly report schedule changed from ${dayName[oldDay]}s ${oldHour}:${oldMinute.toString().padStart(2, '0')} to ${dayName[currentDay]}s ${newHour}:${newMinute.toString().padStart(2, '0')} CEST by ${interaction.user.tag}`);
+          }
           
           await interaction.editReply({ embeds: [embed] });
           
-          this.logger.info(`Daily report schedule changed from ${oldHour}:${oldMinute.toString().padStart(2, '0')} to ${newHour}:${newMinute.toString().padStart(2, '0')} CEST by ${interaction.user.tag}`);
         } catch (error) {
           console.error('❌ Set schedule command error:', error);
           await interaction.editReply('❌ Failed to update schedule');
