@@ -427,9 +427,12 @@ ${transcript}`;
         throw new Error(`Guild with ID ${this.config.guildId} not found`);
       }
 
-      // Find all summary channels that have corresponding prompt channels
+      // Find all summary channels - both with and without suffixes
       const summaryChannels = targetGuild.channels.cache.filter(
-        channel => channel.name && channel.name.includes(this.config.prefixes.summariesOutput)
+        channel => channel.name && (
+          channel.name.startsWith(this.config.prefixes.summariesOutput) || // yt-summaries-1, yt-summaries-2, etc.
+          channel.name === this.config.prefixes.summariesOutput.slice(0, -1) // yt-summaries (without dash)
+        )
       );
 
       if (summaryChannels.size === 0) {
@@ -440,16 +443,31 @@ ${transcript}`;
       // Process each summary channel only if it has a corresponding prompt channel with content
       for (const [channelId, channel] of summaryChannels) {
         try {
-          // Extract the suffix from the summary channel (e.g., yt-summaries-1 -> 1, yt-summaries-dev -> dev)
-          const channelSuffix = channel.name.replace(this.config.prefixes.summariesOutput, '');
-          if (!channelSuffix) {
+          // Extract the suffix from the summary channel or use empty string for base channel
+          let channelSuffix = '';
+          if (channel.name.startsWith(this.config.prefixes.summariesOutput)) {
+            // Has prefix with suffix (e.g., yt-summaries-1 -> 1)
+            channelSuffix = channel.name.replace(this.config.prefixes.summariesOutput, '');
+          } else if (channel.name === this.config.prefixes.summariesOutput.slice(0, -1)) {
+            // Base channel without suffix (e.g., yt-summaries -> '')
+            channelSuffix = '';
+          } else {
             this.logger.info(`Invalid channel name format: ${channel.name}, skipping`);
             continue;
           }
           
           // Find corresponding prompt channel
-          const promptChannelName = `${this.config.prefixes.summaryPrompt}${channelSuffix}`;
-          const promptChannel = targetGuild.channels.cache.find(
+          let promptChannelName, promptChannel;
+          
+          if (channelSuffix) {
+            // Channel with suffix (e.g., yt-summaries-1 -> yt-summary-prompt-1)
+            promptChannelName = `${this.config.prefixes.summaryPrompt}${channelSuffix}`;
+          } else {
+            // Base channel without suffix (e.g., yt-summaries -> yt-summary-prompt)
+            promptChannelName = this.config.prefixes.summaryPrompt.slice(0, -1);
+          }
+          
+          promptChannel = targetGuild.channels.cache.find(
             ch => ch.name === promptChannelName
           );
           
@@ -1093,9 +1111,12 @@ ${transcript}`;
         });
       });
 
-      // Check summary output channels (dynamically detect all)
+      // Check summary output channels (dynamically detect all - with and without suffixes)  
       const summaryOutputChannels = guild.channels.cache.filter(
-        ch => ch.name && ch.name.startsWith(this.config.prefixes.summariesOutput)
+        ch => ch.name && (
+          ch.name.startsWith(this.config.prefixes.summariesOutput) || // yt-summaries-1, yt-summaries-2, etc.
+          ch.name === this.config.prefixes.summariesOutput.slice(0, -1) // yt-summaries (without dash)
+        )
       );
       
       if (summaryOutputChannels.size === 0) {

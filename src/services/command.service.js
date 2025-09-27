@@ -328,9 +328,12 @@ class CommandService {
             throw new Error('Guild not found');
           }
 
-          // Find available summary channels
+          // Find available summary channels (with and without suffixes)
           const summaryChannels = guild.channels.cache.filter(
-            ch => ch.name && ch.name.startsWith(discordService.config.prefixes.summariesOutput)
+            ch => ch.name && (
+              ch.name.startsWith(discordService.config.prefixes.summariesOutput) || // yt-summaries-1, yt-summaries-2, etc.
+              ch.name === discordService.config.prefixes.summariesOutput.slice(0, -1) // yt-summaries (without dash)
+            )
           );
           
           if (summaryChannels.size === 0) {
@@ -340,7 +343,8 @@ class CommandService {
           // Find the specific summary channel
           let summaryChannel = summaryChannels.find(ch => 
             ch.name.endsWith(`-${channelOption}`) ||
-            ch.name === `${discordService.config.prefixes.summariesOutput}${channelOption}`
+            ch.name === `${discordService.config.prefixes.summariesOutput}${channelOption}` ||
+            (channelOption === '1' && ch.name === discordService.config.prefixes.summariesOutput.slice(0, -1)) // Handle base channel for option "1"
           );
           
           // If not found, use the first available channel
@@ -350,7 +354,14 @@ class CommandService {
           }
           
           // Find corresponding prompt channel
-          const promptChannelName = summaryChannel.name.replace('summaries', 'summary-prompt');
+          let promptChannelName;
+          if (summaryChannel.name === discordService.config.prefixes.summariesOutput.slice(0, -1)) {
+            // Base channel without suffix (yt-summaries -> yt-summary-prompt)
+            promptChannelName = discordService.config.prefixes.summaryPrompt.slice(0, -1);
+          } else {
+            // Channel with suffix - use replace logic
+            promptChannelName = summaryChannel.name.replace('summaries', 'summary-prompt');
+          }
           const promptChannel = guild.channels.cache.find(ch => ch.name === promptChannelName);
           
           if (!promptChannel) {
@@ -412,7 +423,10 @@ class CommandService {
           const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
           if (guild) {
             const summaryPromptChannels = guild.channels.cache.filter(
-              ch => ch.name && ch.name.startsWith(discordService.config.prefixes.summaryPrompt)
+              ch => ch.name && (
+                ch.name.startsWith(discordService.config.prefixes.summaryPrompt) || // yt-summary-prompt-1, yt-summary-prompt-2, etc.
+                ch.name === discordService.config.prefixes.summaryPrompt.slice(0, -1) // yt-summary-prompt (without dash)
+              )
             );
             
             if (summaryPromptChannels.size === 0) {
@@ -421,10 +435,20 @@ class CommandService {
               for (const [channelId, channel] of summaryPromptChannels) {
                 try {
                   const prompt = await discordService.getCustomPromptFromChannel(channel.name);
-                  const suffix = channel.name.replace(discordService.config.prefixes.summaryPrompt, '');
+                  let suffix;
+                  if (channel.name.startsWith(discordService.config.prefixes.summaryPrompt)) {
+                    suffix = channel.name.replace(discordService.config.prefixes.summaryPrompt, '');
+                  } else {
+                    suffix = '(base)';
+                  }
                   results.push(`✅ Summary Prompt ${suffix}: ${prompt ? 'Loaded' : 'Not found'}`);
                 } catch (error) {
-                  const suffix = channel.name.replace(discordService.config.prefixes.summaryPrompt, '');
+                  let suffix;
+                  if (channel.name.startsWith(discordService.config.prefixes.summaryPrompt)) {
+                    suffix = channel.name.replace(discordService.config.prefixes.summaryPrompt, '');
+                  } else {
+                    suffix = '(base)';
+                  }
                   results.push(`❌ Summary Prompt ${suffix}: ${error.message}`);
                 }
               }
