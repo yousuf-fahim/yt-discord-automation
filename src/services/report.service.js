@@ -47,6 +47,72 @@ class ReportService {
     }
   }
 
+  async generateWeeklyReport(customPrompt = null) {
+    try {
+      this.logger.info('Generating weekly report...');
+      
+      // Get summaries from the last 7 days
+      const summaries = await this.getWeeklySummaries();
+      
+      if (summaries.length === 0) {
+        return this.generateEmptyWeeklyReport();
+      }
+
+      const report = await this.buildWeeklyReport(summaries, customPrompt);
+      
+      // Wrap in proper format
+      const reportData = {
+        data: report,
+        timestamp: Date.now(),
+        type: 'weekly'
+      };
+      
+      // Cache the report
+      const reportKey = `weekly_report_${this.getWeekKey()}`;
+      await this.cache.set(reportKey, reportData);
+      
+      this.logger.info(`Weekly report generated with ${summaries.length} videos`);
+      return reportData;
+      
+    } catch (error) {
+      this.logger.error('Weekly report generation failed', error);
+      throw error;
+    }
+  }
+
+  async generateMonthlyReport(customPrompt = null) {
+    try {
+      this.logger.info('Generating monthly report...');
+      
+      // Get summaries from the last 30 days
+      const summaries = await this.getMonthlySummaries();
+      
+      if (summaries.length === 0) {
+        return this.generateEmptyMonthlyReport();
+      }
+
+      const report = await this.buildMonthlyReport(summaries, customPrompt);
+      
+      // Wrap in proper format
+      const reportData = {
+        data: report,
+        timestamp: Date.now(),
+        type: 'monthly'
+      };
+      
+      // Cache the report
+      const reportKey = `monthly_report_${this.getMonthKey()}`;
+      await this.cache.set(reportKey, reportData);
+      
+      this.logger.info(`Monthly report generated with ${summaries.length} videos`);
+      return reportData;
+      
+    } catch (error) {
+      this.logger.error('Monthly report generation failed', error);
+      throw error;
+    }
+  }
+
   async getRecentSummaries() {
     try {
       // Get summaries from the last 24 hours
@@ -90,6 +156,68 @@ class ReportService {
       return filtered;
     } catch (error) {
       this.logger.error('Error getting recent summaries', error);
+      return [];
+    }
+  }
+
+  async getWeeklySummaries() {
+    try {
+      const last7Days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const allSummaries = [];
+      
+      // Collect summaries from last 7 days
+      for (let i = 0; i < 7; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        
+        const daySummaries = await this.getSummariesByDate(date);
+        // Ensure we have an array before spreading
+        if (Array.isArray(daySummaries)) {
+          allSummaries.push(...daySummaries);
+        }
+      }
+      
+      // Filter to last 7 days with timestamps
+      const filtered = allSummaries.filter(summary => {
+        return summary && summary.timestamp && new Date(summary.timestamp) >= last7Days;
+      });
+      
+      this.logger.debug(`Weekly summaries collected: ${filtered.length} videos`);
+      return filtered;
+    } catch (error) {
+      this.logger.error('Error getting weekly summaries', error);
+      return [];
+    }
+  }
+
+  async getMonthlySummaries() {
+    try {
+      const last30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const allSummaries = [];
+      
+      // Collect summaries from last 30 days
+      for (let i = 0; i < 30; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        
+        const daySummaries = await this.getSummariesByDate(date);
+        // Ensure we have an array before spreading
+        if (Array.isArray(daySummaries)) {
+          allSummaries.push(...daySummaries);
+        }
+      }
+      
+      // Filter to last 30 days with timestamps
+      const filtered = allSummaries.filter(summary => {
+        return summary && summary.timestamp && new Date(summary.timestamp) >= last30Days;
+      });
+      
+      this.logger.debug(`Monthly summaries collected: ${filtered.length} videos`);
+      return filtered;
+    } catch (error) {
+      this.logger.error('Error getting monthly summaries', error);
       return [];
     }
   }
@@ -199,6 +327,70 @@ class ReportService {
     };
   }
 
+  async buildWeeklyReport(summaries, customPrompt) {
+    if (!summaries || summaries.length === 0) {
+      return this.generateEmptyWeeklyReport().data;
+    }
+
+    // If custom prompt provided, use AI to generate custom report
+    if (customPrompt) {
+      const summariesData = this.formatSummariesForAI(summaries);
+      return await this.summary.generateCustomReport(summariesData, customPrompt);
+    }
+
+    // Default weekly report format
+    const weekRange = this.getWeekRange();
+    let reportText = `📊 **Weekly Report - ${weekRange}**\n\n`;
+    reportText += `📈 **${summaries.length} videos processed this week**\n\n`;
+
+    // Group by day
+    const byDay = this.groupSummariesByDay(summaries);
+    
+    Object.keys(byDay).sort().forEach(day => {
+      const daySummaries = byDay[day];
+      reportText += `**${day} (${daySummaries.length} videos)**\n`;
+      daySummaries.forEach(summary => {
+        reportText += `• ${summary.videoTitle || `Video ${summary.videoId}`}\n`;
+      });
+      reportText += '\n';
+    });
+
+    reportText += `_Generated at ${new Date().toLocaleString()}_`;
+    return reportText;
+  }
+
+  async buildMonthlyReport(summaries, customPrompt) {
+    if (!summaries || summaries.length === 0) {
+      return this.generateEmptyMonthlyReport().data;
+    }
+
+    // If custom prompt provided, use AI to generate custom report
+    if (customPrompt) {
+      const summariesData = this.formatSummariesForAI(summaries);
+      return await this.summary.generateCustomReport(summariesData, customPrompt);
+    }
+
+    // Default monthly report format
+    const monthRange = this.getMonthRange();
+    let reportText = `📊 **Monthly Report - ${monthRange}**\n\n`;
+    reportText += `📈 **${summaries.length} videos processed this month**\n\n`;
+
+    // Group by week
+    const byWeek = this.groupSummariesByWeek(summaries);
+    
+    Object.keys(byWeek).sort().forEach(week => {
+      const weekSummaries = byWeek[week];
+      reportText += `**Week ${week} (${weekSummaries.length} videos)**\n`;
+      weekSummaries.forEach(summary => {
+        reportText += `• ${summary.videoTitle || `Video ${summary.videoId}`}\n`;
+      });
+      reportText += '\n';
+    });
+
+    reportText += `_Generated at ${new Date().toLocaleString()}_`;
+    return reportText;
+  }
+
   generateEmptyReport() {
     const date = new Date().toLocaleDateString('en-US', {
       weekday: 'long',
@@ -215,6 +407,102 @@ class ReportService {
       data: reportText,
       timestamp: Date.now()
     };
+  }
+
+  generateEmptyWeeklyReport() {
+    const weekRange = this.getWeekRange();
+    const reportText = `📊 **Weekly Report - ${weekRange}**\n\n` +
+           `No activity this week - no YouTube videos were processed in the last 7 days.\n\n` +
+           `🔄 The bot is running normally and ready to process new videos.`;
+           
+    return {
+      data: reportText,
+      timestamp: Date.now(),
+      type: 'weekly'
+    };
+  }
+
+  generateEmptyMonthlyReport() {
+    const monthRange = this.getMonthRange();
+    const reportText = `📊 **Monthly Report - ${monthRange}**\n\n` +
+           `No activity this month - no YouTube videos were processed in the last 30 days.\n\n` +
+           `🔄 The bot is running normally and ready to process new videos.`;
+           
+    return {
+      data: reportText,
+      timestamp: Date.now(),
+      type: 'monthly'
+    };
+  }
+
+  formatSummariesForAI(summaries) {
+    return summaries.map(summary => ({
+      title: summary.videoTitle || 'Unknown Title',
+      url: summary.videoUrl || '',
+      summary: summary.summaryContent || '',
+      date: summary.timestamp ? new Date(summary.timestamp).toLocaleDateString() : 'Unknown date'
+    })).map(s => `**${s.title}** (${s.date})\n${s.url}\n${s.summary}\n`).join('\n---\n\n');
+  }
+
+  groupSummariesByDay(summaries) {
+    const groups = {};
+    summaries.forEach(summary => {
+      if (summary.timestamp) {
+        const day = new Date(summary.timestamp).toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          month: 'short', 
+          day: 'numeric' 
+        });
+        if (!groups[day]) groups[day] = [];
+        groups[day].push(summary);
+      }
+    });
+    return groups;
+  }
+
+  groupSummariesByWeek(summaries) {
+    const groups = {};
+    summaries.forEach(summary => {
+      if (summary.timestamp) {
+        const date = new Date(summary.timestamp);
+        const weekNum = this.getWeekNumber(date);
+        if (!groups[weekNum]) groups[weekNum] = [];
+        groups[weekNum].push(summary);
+      }
+    });
+    return groups;
+  }
+
+  getWeekRange() {
+    const now = new Date();
+    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return `${start.toLocaleDateString()} - ${now.toLocaleDateString()}`;
+  }
+
+  getMonthRange() {
+    const now = new Date();
+    const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return `${start.toLocaleDateString()} - ${now.toLocaleDateString()}`;
+  }
+
+  getWeekKey() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const week = this.getWeekNumber(now);
+    return `${year}-W${week.toString().padStart(2, '0')}`;
+  }
+
+  getMonthKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+  }
+
+  getWeekNumber(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
   }
 
   async healthCheck() {

@@ -54,8 +54,8 @@ class DiscordService {
       
       console.log('✅ Discord service initialized');
       
-      // Schedule daily report generation
-      this.scheduleDailyReports();
+      // Schedule reports generation
+      this.scheduleReports();
       
       // Note: Slash commands are registered in the 'ready' event handler
       
@@ -588,11 +588,19 @@ ${transcript}`;
     }
     
     await this.client.login(this.config.token);
-    
-    // Setup daily report scheduling once bot is ready
+  }
+
+  scheduleReports() {
+    // Setup report scheduling once bot is ready
     this.client.once('ready', () => {
-      this.setupDailyReportSchedule();
+      this.setupAllReportSchedules();
     });
+  }
+
+  setupAllReportSchedules() {
+    this.setupDailyReportSchedule();
+    this.setupWeeklyReportSchedule();
+    this.setupMonthlyReportSchedule();
   }
 
   setupDailyReportSchedule() {
@@ -624,6 +632,68 @@ ${transcript}`;
         this.logger.info('Scheduled daily report completed successfully');
       } catch (error) {
         this.logger.error('Scheduled daily report failed', error);
+      }
+    });
+  }
+
+  setupWeeklyReportSchedule() {
+    // Weekly reports on Sunday at 19:00 CEST
+    const weeklyHour = 19;
+    const weeklyMinute = 0;
+    
+    // Convert CEST to UTC for cron
+    const now = new Date();
+    const isDST = () => {
+      const jan = new Date(now.getFullYear(), 0, 1);
+      const jul = new Date(now.getFullYear(), 6, 1);
+      return now.getTimezoneOffset() < Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+    };
+    
+    const utcOffset = isDST() ? 2 : 1;
+    const utcHour = (weeklyHour - utcOffset + 24) % 24;
+    const cronExpression = `${weeklyMinute} ${utcHour} * * 0`; // Sunday = 0
+    
+    this.logger.info(`Setting up weekly report scheduler: ${cronExpression} (Sundays at ${weeklyHour}:${weeklyMinute.toString().padStart(2, '0')} CEST)`);
+    
+    // Schedule weekly report
+    cron.schedule(cronExpression, async () => {
+      this.logger.info('Running scheduled weekly report...');
+      try {
+        await this.sendWeeklyReport();
+        this.logger.info('Scheduled weekly report completed successfully');
+      } catch (error) {
+        this.logger.error('Scheduled weekly report failed', error);
+      }
+    });
+  }
+
+  setupMonthlyReportSchedule() {
+    // Monthly reports on 1st of each month at 20:00 CEST
+    const monthlyHour = 20;
+    const monthlyMinute = 0;
+    
+    // Convert CEST to UTC for cron
+    const now = new Date();
+    const isDST = () => {
+      const jan = new Date(now.getFullYear(), 0, 1);
+      const jul = new Date(now.getFullYear(), 6, 1);
+      return now.getTimezoneOffset() < Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+    };
+    
+    const utcOffset = isDST() ? 2 : 1;
+    const utcHour = (monthlyHour - utcOffset + 24) % 24;
+    const cronExpression = `${monthlyMinute} ${utcHour} 1 * *`; // 1st of month
+    
+    this.logger.info(`Setting up monthly report scheduler: ${cronExpression} (1st of each month at ${monthlyHour}:${monthlyMinute.toString().padStart(2, '0')} CEST)`);
+    
+    // Schedule monthly report
+    cron.schedule(cronExpression, async () => {
+      this.logger.info('Running scheduled monthly report...');
+      try {
+        await this.sendMonthlyReport();
+        this.logger.info('Scheduled monthly report completed successfully');
+      } catch (error) {
+        this.logger.error('Scheduled monthly report failed', error);
       }
     });
   }
@@ -748,6 +818,210 @@ ${transcript}`;
     }
   }
 
+  // ============ WEEKLY REPORTS ============
+
+  async sendWeeklyReport() {
+    try {
+      this.logger.info('Processing weekly reports...');
+      
+      // Find the configured guild
+      const guild = this.client.guilds.cache.get(this.config.guildId);
+      if (!guild) {
+        throw new Error(`Guild with ID ${this.config.guildId} not found`);
+      }
+      
+      // Check for weekly report prompt channels
+      const weeklyReportPromptChannels = guild.channels.cache.filter(
+        channel => channel.name && channel.name.startsWith(this.config.prefixes.weeklyReportPrompt)
+      );
+      
+      if (weeklyReportPromptChannels.size > 0) {
+        // Process each weekly report prompt channel
+        for (const [channelId, promptChannel] of weeklyReportPromptChannels) {
+          await this.processWeeklyReportWithPrompt(guild, promptChannel);
+        }
+      } else {
+        // Fallback to default weekly report
+        await this.sendDefaultWeeklyReport(guild);
+      }
+      
+      this.logger.info('Weekly report processing completed');
+    } catch (error) {
+      this.logger.error('Error processing weekly reports', error);
+      throw error;
+    }
+  }
+
+  async processWeeklyReportWithPrompt(guild, promptChannel) {
+    try {
+      // Get pinned messages from the prompt channel
+      const pinnedMessages = await promptChannel.messages.fetchPinned();
+      
+      if (pinnedMessages.size === 0) {
+        this.logger.info(`No pinned messages in ${promptChannel.name}, using default weekly report`);
+        await this.sendDefaultWeeklyReport(guild);
+        return;
+      }
+
+      // Use the first pinned message as the prompt
+      const pinnedMessage = pinnedMessages.first();
+      const customPrompt = pinnedMessage.content;
+      this.logger.info(`Using custom weekly report prompt from ${promptChannel.name}`);
+
+      // Generate weekly report
+      const report = await this.report.generateWeeklyReport(customPrompt);
+      
+      // Find corresponding output channel
+      const outputChannelName = promptChannel.name.replace(this.config.prefixes.weeklyReportPrompt, 'weekly-report-');
+      let outputChannel = guild.channels.cache.find(ch => ch.name === outputChannelName);
+      
+      if (!outputChannel) {
+        // Try generic weekly-report channel
+        outputChannel = guild.channels.cache.find(ch => ch.name === 'weekly-report');
+      }
+      
+      if (!outputChannel) {
+        // Last resort fallback
+        outputChannel = guild.channels.cache.find(
+          channel => channel.name && (
+            channel.name.includes('general') || 
+            channel.name.includes('bot') ||
+            channel.name.includes('reports')
+          )
+        );
+      }
+      
+      if (outputChannel) {
+        this.logger.info(`Sending weekly report to channel: ${outputChannel.name}`);
+        await this.sendLongMessage(outputChannel, report.data);
+        this.logger.info(`Weekly report sent to ${outputChannel.name}`);
+      } else {
+        this.logger.error('No suitable output channel found for weekly report');
+      }
+    } catch (error) {
+      this.logger.error(`Error processing weekly report prompt from ${promptChannel.name}`, error);
+    }
+  }
+
+  async sendDefaultWeeklyReport(guild) {
+    try {
+      const report = await this.report.generateWeeklyReport();
+      const outputChannel = guild.channels.cache.find(ch => ch.name === 'weekly-report') ||
+                           guild.channels.cache.find(ch => ch.name && ch.name.includes('general'));
+      
+      if (outputChannel) {
+        await this.sendLongMessage(outputChannel, report.data);
+        this.logger.info(`Default weekly report sent to ${outputChannel.name}`);
+      } else {
+        this.logger.error('No suitable channel found for default weekly report');
+      }
+    } catch (error) {
+      this.logger.error('Error sending default weekly report', error);
+    }
+  }
+
+  // ============ MONTHLY REPORTS ============
+
+  async sendMonthlyReport() {
+    try {
+      this.logger.info('Processing monthly reports...');
+      
+      // Find the configured guild
+      const guild = this.client.guilds.cache.get(this.config.guildId);
+      if (!guild) {
+        throw new Error(`Guild with ID ${this.config.guildId} not found`);
+      }
+      
+      // Check for monthly report prompt channels
+      const monthlyReportPromptChannels = guild.channels.cache.filter(
+        channel => channel.name && channel.name.startsWith(this.config.prefixes.monthlyReportPrompt)
+      );
+      
+      if (monthlyReportPromptChannels.size > 0) {
+        // Process each monthly report prompt channel
+        for (const [channelId, promptChannel] of monthlyReportPromptChannels) {
+          await this.processMonthlyReportWithPrompt(guild, promptChannel);
+        }
+      } else {
+        // Fallback to default monthly report
+        await this.sendDefaultMonthlyReport(guild);
+      }
+      
+      this.logger.info('Monthly report processing completed');
+    } catch (error) {
+      this.logger.error('Error processing monthly reports', error);
+      throw error;
+    }
+  }
+
+  async processMonthlyReportWithPrompt(guild, promptChannel) {
+    try {
+      // Get pinned messages from the prompt channel
+      const pinnedMessages = await promptChannel.messages.fetchPinned();
+      
+      if (pinnedMessages.size === 0) {
+        this.logger.info(`No pinned messages in ${promptChannel.name}, using default monthly report`);
+        await this.sendDefaultMonthlyReport(guild);
+        return;
+      }
+
+      // Use the first pinned message as the prompt
+      const pinnedMessage = pinnedMessages.first();
+      const customPrompt = pinnedMessage.content;
+      this.logger.info(`Using custom monthly report prompt from ${promptChannel.name}`);
+
+      // Generate monthly report
+      const report = await this.report.generateMonthlyReport(customPrompt);
+      
+      // Find corresponding output channel
+      const outputChannelName = promptChannel.name.replace(this.config.prefixes.monthlyReportPrompt, 'monthly-report-');
+      let outputChannel = guild.channels.cache.find(ch => ch.name === outputChannelName);
+      
+      if (!outputChannel) {
+        // Try generic monthly-report channel
+        outputChannel = guild.channels.cache.find(ch => ch.name === 'monthly-report');
+      }
+      
+      if (!outputChannel) {
+        // Last resort fallback
+        outputChannel = guild.channels.cache.find(
+          channel => channel.name && (
+            channel.name.includes('general') || 
+            channel.name.includes('bot') ||
+            channel.name.includes('reports')
+          )
+        );
+      }
+      
+      if (outputChannel) {
+        this.logger.info(`Sending monthly report to channel: ${outputChannel.name}`);
+        await this.sendLongMessage(outputChannel, report.data);
+        this.logger.info(`Monthly report sent to ${outputChannel.name}`);
+      } else {
+        this.logger.error('No suitable output channel found for monthly report');
+      }
+    } catch (error) {
+      this.logger.error(`Error processing monthly report prompt from ${promptChannel.name}`, error);
+    }
+  }
+
+  async sendDefaultMonthlyReport(guild) {
+    try {
+      const report = await this.report.generateMonthlyReport();
+      const outputChannel = guild.channels.cache.find(ch => ch.name === 'monthly-report') ||
+                           guild.channels.cache.find(ch => ch.name && ch.name.includes('general'));
+      
+      if (outputChannel) {
+        await this.sendLongMessage(outputChannel, report.data);
+        this.logger.info(`Default monthly report sent to ${outputChannel.name}`);
+      } else {
+        this.logger.error('No suitable channel found for default monthly report');
+      }
+    } catch (error) {
+      this.logger.error('Error sending default monthly report', error);
+    }
+  }
+
   async sendDefaultDailyReport(guild, report) {
     try {
       let reportChannel = guild.channels.cache.find(
@@ -842,39 +1116,75 @@ ${transcript}`;
         });
       }
 
-      // Check daily report channels
-      for (let i = 1; i <= 3; i++) {
-        const name = i === 1 ? 'daily-report' : `daily-report-${i}`;
-        const channel = guild.channels.cache.find(ch => ch.name === name);
+      // Check daily report channels (only show existing ones)
+      const dailyReportChannels = guild.channels.cache.filter(
+        ch => ch.name && (ch.name === 'daily-report' || ch.name.match(/^daily-report-\d+$/))
+      );
+      
+      if (dailyReportChannels.size > 0) {
+        dailyReportChannels.forEach(channel => {
+          channels.push({
+            name: channel.name,
+            type: 'daily-reports',
+            active: true,
+            lastActivity: 'Daily at 18:00 CEST'
+          });
+        });
+      } else {
+        // Show at least one entry if no daily report channels exist
         channels.push({
-          name,
+          name: 'daily-report',
           type: 'daily-reports',
-          active: !!channel,
-          lastActivity: channel ? 'Daily at 18:00 CEST' : 'Channel not found'
+          active: false,
+          lastActivity: 'No daily report channels found'
         });
       }
       
-      // Check weekly report channels
-      for (let i = 1; i <= 3; i++) {
-        const name = i === 1 ? 'weekly-report' : `weekly-report-${i}`;
-        const channel = guild.channels.cache.find(ch => ch.name === name);
+      // Check weekly report channels (only show existing ones)
+      const weeklyReportChannels = guild.channels.cache.filter(
+        ch => ch.name && (ch.name === 'weekly-report' || ch.name.match(/^weekly-report-\d+$/))
+      );
+      
+      if (weeklyReportChannels.size > 0) {
+        weeklyReportChannels.forEach(channel => {
+          channels.push({
+            name: channel.name,
+            type: 'weekly-reports',
+            active: true,
+            lastActivity: 'Weekly on Sundays'
+          });
+        });
+      } else {
+        // Show at least one entry if no weekly report channels exist
         channels.push({
-          name,
+          name: 'weekly-report',
           type: 'weekly-reports',
-          active: !!channel,
-          lastActivity: channel ? 'Weekly on Sundays' : 'Channel not found'
+          active: false,
+          lastActivity: 'No weekly report channels found'
         });
       }
       
-      // Check monthly report channels
-      for (let i = 1; i <= 3; i++) {
-        const name = i === 1 ? 'monthly-report' : `monthly-report-${i}`;
-        const channel = guild.channels.cache.find(ch => ch.name === name);
+      // Check monthly report channels (only show existing ones)
+      const monthlyReportChannels = guild.channels.cache.filter(
+        ch => ch.name && (ch.name === 'monthly-report' || ch.name.match(/^monthly-report-\d+$/))
+      );
+      
+      if (monthlyReportChannels.size > 0) {
+        monthlyReportChannels.forEach(channel => {
+          channels.push({
+            name: channel.name,
+            type: 'monthly-reports',
+            active: true,
+            lastActivity: 'Monthly on 1st'
+          });
+        });
+      } else {
+        // Show at least one entry if no monthly report channels exist
         channels.push({
-          name,
+          name: 'monthly-report',
           type: 'monthly-reports',
-          active: !!channel,
-          lastActivity: channel ? 'Monthly on 1st' : 'Channel not found'
+          active: false,
+          lastActivity: 'No monthly report channels found'
         });
       }
       
@@ -982,57 +1292,75 @@ ${transcript}`;
       }
     }
     
-    // Check daily report prompts
-    for (let i = 1; i <= 3; i++) {
-      try {
-        const prompt = await this.getCustomPromptFromChannel(`yt-daily-report-prompt-${i}`);
-        results.push({
-          channel: `yt-daily-report-prompt-${i}`,
-          valid: !!prompt,
-          message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
-        });
-      } catch (error) {
-        results.push({
-          channel: `yt-daily-report-prompt-${i}`,
-          valid: false,
-          message: error.message
-        });
+    // Check daily report prompts (only existing channels)
+    const dailyReportPromptChannels = guild.channels.cache.filter(
+      ch => ch.name && ch.name.startsWith(this.config.prefixes.dailyReportPrompt)
+    );
+    
+    if (dailyReportPromptChannels.size > 0) {
+      for (const [channelId, channel] of dailyReportPromptChannels) {
+        try {
+          const prompt = await this.getCustomPromptFromChannel(channel.name);
+          results.push({
+            channel: channel.name,
+            valid: !!prompt,
+            message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
+          });
+        } catch (error) {
+          results.push({
+            channel: channel.name,
+            valid: false,
+            message: error.message
+          });
+        }
       }
     }
     
-    // Check weekly report prompts
-    for (let i = 1; i <= 3; i++) {
-      try {
-        const prompt = await this.getCustomPromptFromChannel(`yt-weekly-report-prompt-${i}`);
-        results.push({
-          channel: `yt-weekly-report-prompt-${i}`,
-          valid: !!prompt,
-          message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
-        });
-      } catch (error) {
-        results.push({
-          channel: `yt-weekly-report-prompt-${i}`,
-          valid: false,
-          message: error.message
-        });
+    // Check weekly report prompts (only existing channels)
+    const weeklyReportPromptChannels = guild.channels.cache.filter(
+      ch => ch.name && ch.name.startsWith(this.config.prefixes.weeklyReportPrompt)
+    );
+    
+    if (weeklyReportPromptChannels.size > 0) {
+      for (const [channelId, channel] of weeklyReportPromptChannels) {
+        try {
+          const prompt = await this.getCustomPromptFromChannel(channel.name);
+          results.push({
+            channel: channel.name,
+            valid: !!prompt,
+            message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
+          });
+        } catch (error) {
+          results.push({
+            channel: channel.name,
+            valid: false,
+            message: error.message
+          });
+        }
       }
     }
     
-    // Check monthly report prompts
-    for (let i = 1; i <= 3; i++) {
-      try {
-        const prompt = await this.getCustomPromptFromChannel(`yt-monthly-report-prompt-${i}`);
-        results.push({
-          channel: `yt-monthly-report-prompt-${i}`,
-          valid: !!prompt,
-          message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
-        });
-      } catch (error) {
-        results.push({
-          channel: `yt-monthly-report-prompt-${i}`,
-          valid: false,
-          message: error.message
-        });
+    // Check monthly report prompts (only existing channels)
+    const monthlyReportPromptChannels = guild.channels.cache.filter(
+      ch => ch.name && ch.name.startsWith(this.config.prefixes.monthlyReportPrompt)
+    );
+    
+    if (monthlyReportPromptChannels.size > 0) {
+      for (const [channelId, channel] of monthlyReportPromptChannels) {
+        try {
+          const prompt = await this.getCustomPromptFromChannel(channel.name);
+          results.push({
+            channel: channel.name,
+            valid: !!prompt,
+            message: prompt ? `Loaded (${prompt.length} chars)` : 'No pinned prompt found'
+          });
+        } catch (error) {
+          results.push({
+            channel: channel.name,
+            valid: false,
+            message: error.message
+          });
+        }
       }
     }
     
