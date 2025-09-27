@@ -5,9 +5,26 @@
 const { OpenAI } = require('openai');
 
 class SummaryService {
-  constructor(config, openai) {
-    this.config = config;
-    this.openai = openai;
+  constructor(serviceManager, dependencies) {
+    // Handle both old (direct config/openai) and new (ServiceManager) initialization
+    if (serviceManager.config) {
+      // New ServiceManager pattern
+      this.serviceManager = serviceManager;
+      this.config = serviceManager.config.openai;
+      this.logger = serviceManager.logger;
+      this.cache = dependencies?.cache;
+      
+      // Initialize OpenAI client
+      this.openai = new OpenAI({ 
+        apiKey: this.config.apiKey 
+      });
+    } else {
+      // Legacy direct initialization (for backward compatibility)
+      this.config = serviceManager; // First param is actually config
+      this.openai = dependencies; // Second param is actually openai client
+      this.logger = console;
+      this.cache = null;
+    }
   }
 
   // Helper method to get the correct parameters based on model
@@ -33,8 +50,12 @@ class SummaryService {
   async initialize() {
     // Test OpenAI connection
     try {
-      await this.openai.models.list();
-      this.logger.info('Summary service initialized with OpenAI');
+      if (this.openai) {
+        await this.openai.models.list();
+        this.logger.info('Summary service initialized with OpenAI');
+      } else {
+        throw new Error('OpenAI client not initialized');
+      }
     } catch (error) {
       this.logger.error('OpenAI initialization failed', error);
       throw error;
@@ -44,11 +65,13 @@ class SummaryService {
   async generateSummary(transcript, videoTitle, videoUrl, customPrompt = null) {
     const cacheKey = `summary_${this.hashString(transcript + (customPrompt || ''))}`;
     
-    // Check cache first
-    const cached = await this.cache.get(cacheKey);
-    if (cached) {
-      this.logger.debug('Using cached summary');
-      return cached;
+    // Check cache first (if available)
+    if (this.cache) {
+      const cached = await this.cache.get(cacheKey);
+      if (cached) {
+        this.logger.debug('Using cached summary');
+        return cached;
+      }
     }
 
     try {
@@ -102,8 +125,10 @@ class SummaryService {
       // Format the output if it's JSON from a custom prompt
       const formattedSummary = this.formatSummaryOutput(summary, videoTitle, isCustomPrompt, customPrompt);
       
-      // Cache the result
-      await this.cache.set(cacheKey, formattedSummary);
+      // Cache the result (if cache is available)
+      if (this.cache) {
+        await this.cache.set(cacheKey, formattedSummary);
+      }
       
       this.logger.info(`Generated summary for: ${videoTitle}${customPrompt ? ' (custom prompt)' : ''}`);
       return formattedSummary;
