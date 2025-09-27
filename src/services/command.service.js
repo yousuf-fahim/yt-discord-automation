@@ -22,6 +22,7 @@ class CommandService {
     
     // Register all commands
     this.registerHealthCommand();
+    this.registerDetailedHealthCommand();
     this.registerTriggerReportCommand();
     this.registerTestSummaryCommand();
     this.registerReloadPromptsCommand();
@@ -87,6 +88,95 @@ class CommandService {
         } catch (error) {
           console.error('❌ Health check command error:', error);
           await interaction.editReply('❌ Error running health check: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerDetailedHealthCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('detailed-health')
+      .setDescription('Get detailed health information and diagnostics');
+    
+    this.commands.set('detailed-health', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          console.log('🔍 Running detailed health check via command...');
+          
+          const serviceTypes = ['transcript', 'summary', 'report', 'discord'];
+          const results = [];
+          
+          for (const serviceType of serviceTypes) {
+            try {
+              const service = this.serviceManager.getService(serviceType);
+              if (service && service.healthCheck) {
+                const result = await service.healthCheck();
+                results.push({
+                  name: serviceType,
+                  status: result.status,
+                  details: result,
+                  error: result.error
+                });
+              } else {
+                results.push({
+                  name: serviceType,
+                  status: 'unavailable',
+                  details: { status: 'Service not available or missing healthCheck method' }
+                });
+              }
+            } catch (error) {
+              results.push({
+                name: serviceType,
+                status: 'error',
+                details: { status: 'error', error: error.message },
+                error: error.message
+              });
+            }
+          }
+          
+          const embed = new EmbedBuilder()
+            .setTitle('🔍 Detailed Health Check Results')
+            .setColor(results.some(r => r.status === 'error') ? 0xff6b6b : 0x51cf66)
+            .setTimestamp();
+          
+          results.forEach(result => {
+            const status = result.status === 'ok' ? '✅' : 
+                          result.status === 'error' ? '❌' : '⚠️';
+            
+            let value = `**Status**: ${result.status}\n`;
+            
+            if (result.details) {
+              if (result.details.model) value += `**Model**: ${result.details.model}\n`;
+              if (result.details.apiKeyConfigured !== undefined) value += `**API Key**: ${result.details.apiKeyConfigured ? '✅ Configured' : '❌ Missing'}\n`;
+              if (result.details.servicesAvailable) value += `**Services**: ${result.details.servicesAvailable.join(', ')}\n`;
+            }
+            
+            if (result.error) {
+              value += `**Error**: ${result.error}`;
+            }
+            
+            embed.addFields({
+              name: `${status} ${result.name.charAt(0).toUpperCase() + result.name.slice(1)} Service`,
+              value: value || 'No additional details',
+              inline: true
+            });
+          });
+          
+          // Add system info
+          embed.addFields({
+            name: '🖥️ System Information',
+            value: `**Node.js**: ${process.version}\n**Memory**: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n**Uptime**: ${Math.round(process.uptime())}s`,
+            inline: false
+          });
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Detailed health check command error:', error);
+          await interaction.editReply('❌ Error running detailed health check: ' + error.message);
         }
       }
     });
@@ -1012,7 +1102,10 @@ class CommandService {
                 name: '📊 Report Schedules',
                 value: `**Weekly**: ${config.discord.schedule.weeklyReportDay !== undefined ? 
                   `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][config.discord.schedule.weeklyReportDay]} ${config.discord.schedule.weeklyReportHour}:${config.discord.schedule.weeklyReportMinute.toString().padStart(2, '0')} CEST` : 
-                  'Sundays 19:00 CEST'}\n**Monthly**: 1st of month 20:00 CEST`,
+                  'Sundays 19:00 CEST'}\n**Monthly**: ${config.discord.schedule.monthlyReportDay ? 
+                  (config.discord.schedule.monthlyReportDay === 'L' ? 'Last day' : 
+                   config.discord.schedule.monthlyReportDay === '15' ? '15th' : '1st') + ` of month ${config.discord.schedule.monthlyReportHour || 20}:${(config.discord.schedule.monthlyReportMinute || 0).toString().padStart(2, '0')} CEST` : 
+                  '1st of month 20:00 CEST'}`,
                 inline: true
               },
               {
@@ -1212,7 +1305,8 @@ class CommandService {
           .setRequired(true)
           .addChoices(
             { name: 'Daily Reports', value: 'daily' },
-            { name: 'Weekly Reports', value: 'weekly' }
+            { name: 'Weekly Reports', value: 'weekly' },
+            { name: 'Monthly Reports', value: 'monthly' }
           )
       )
       .addIntegerOption(option =>
@@ -1229,12 +1323,24 @@ class CommandService {
           .setMinValue(0)
           .setMaxValue(59)
       )
-      .addIntegerOption(option =>
+      .addStringOption(option =>
         option.setName('day')
-          .setDescription('Day of week for weekly reports (0=Sunday, 1=Monday, etc.)')
+          .setDescription('Day selection for weekly/monthly reports')
           .setRequired(false)
-          .setMinValue(0)
-          .setMaxValue(6)
+          .addChoices(
+            // Weekly options
+            { name: 'Sunday', value: 'sunday' },
+            { name: 'Monday', value: 'monday' },
+            { name: 'Tuesday', value: 'tuesday' },
+            { name: 'Wednesday', value: 'wednesday' },
+            { name: 'Thursday', value: 'thursday' },
+            { name: 'Friday', value: 'friday' },
+            { name: 'Saturday', value: 'saturday' },
+            // Monthly options
+            { name: '1st of month', value: '1' },
+            { name: '15th of month', value: '15' },
+            { name: 'Last day of month', value: 'last' }
+          )
       );
     
     this.commands.set('set-schedule', {
@@ -1246,8 +1352,18 @@ class CommandService {
           const reportType = interaction.options.getString('report-type');
           const newHour = interaction.options.getInteger('hour');
           const newMinute = interaction.options.getInteger('minute') || 0;
-          const newDay = interaction.options.getInteger('day');
+          const dayOption = interaction.options.getString('day');
           
+          // Helper function to convert day string to number
+          const getDayNumber = (dayStr) => {
+            const dayMap = {
+              'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+              'thursday': 4, 'friday': 5, 'saturday': 6
+            };
+            return dayMap[dayStr] !== undefined ? dayMap[dayStr] : 0;
+          };
+          
+          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
           let embed;
           
           if (reportType === 'daily') {
@@ -1286,10 +1402,9 @@ class CommandService {
             
           } else if (reportType === 'weekly') {
             // Handle weekly report schedule update
-            const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const currentDay = newDay !== null ? newDay : 0; // Default to Sunday
+            const newDay = dayOption ? getDayNumber(dayOption) : 0; // Default to Sunday
             
-            // Add weekly schedule to config if not exists
+            // Initialize weekly schedule if not exists
             if (!this.serviceManager.config.discord.schedule.weeklyReportHour) {
               this.serviceManager.config.discord.schedule.weeklyReportHour = 19;
               this.serviceManager.config.discord.schedule.weeklyReportMinute = 0;
@@ -1303,7 +1418,7 @@ class CommandService {
             // Update the configuration
             this.serviceManager.config.discord.schedule.weeklyReportHour = newHour;
             this.serviceManager.config.discord.schedule.weeklyReportMinute = newMinute;
-            this.serviceManager.config.discord.schedule.weeklyReportDay = currentDay;
+            this.serviceManager.config.discord.schedule.weeklyReportDay = newDay;
             
             embed = new EmbedBuilder()
               .setTitle('📊 Weekly Schedule Updated')
@@ -1311,29 +1426,86 @@ class CommandService {
               .addFields(
                 {
                   name: 'Previous Weekly Schedule',
-                  value: `${dayName[oldDay]}s at ${oldHour}:${oldMinute.toString().padStart(2, '0')} CEST`,
+                  value: `${dayNames[oldDay]}s at ${oldHour}:${oldMinute.toString().padStart(2, '0')} CEST`,
                   inline: true
                 },
                 {
                   name: 'New Weekly Schedule',
-                  value: `${dayName[currentDay]}s at ${newHour}:${newMinute.toString().padStart(2, '0')} CEST`,
+                  value: `${dayNames[newDay]}s at ${newHour}:${newMinute.toString().padStart(2, '0')} CEST`,
                   inline: true
                 },
                 {
                   name: '⚠️ Important Note',
                   value: 'Weekly schedule change requires bot restart to take effect. The new schedule will be active after the next deployment.',
                   inline: false
-                },
-                {
-                  name: '📅 Monthly Schedule',
-                  value: 'Monthly reports remain on 1st of month at 20:00 CEST (hardcoded)',
-                  inline: false
                 }
               )
               .setFooter({ text: 'Weekly schedules are temporary until restart. For permanent changes, update deployment configuration.' })
               .setTimestamp();
             
-            this.logger.info(`Weekly report schedule changed from ${dayName[oldDay]}s ${oldHour}:${oldMinute.toString().padStart(2, '0')} to ${dayName[currentDay]}s ${newHour}:${newMinute.toString().padStart(2, '0')} CEST by ${interaction.user.tag}`);
+            this.logger.info(`Weekly report schedule changed from ${dayNames[oldDay]}s ${oldHour}:${oldMinute.toString().padStart(2, '0')} to ${dayNames[newDay]}s ${newHour}:${newMinute.toString().padStart(2, '0')} CEST by ${interaction.user.tag}`);
+            
+          } else if (reportType === 'monthly') {
+            // Handle monthly report schedule update
+            let dayDescription = '1st of month';
+            let cronDay = '1';
+            
+            if (dayOption) {
+              if (dayOption === 'last') {
+                dayDescription = 'Last day of month';
+                cronDay = 'L'; // Last day cron syntax
+              } else if (dayOption === '15') {
+                dayDescription = '15th of month';
+                cronDay = '15';
+              } else if (dayOption === '1') {
+                dayDescription = '1st of month';
+                cronDay = '1';
+              }
+            }
+            
+            // Initialize monthly schedule if not exists
+            if (!this.serviceManager.config.discord.schedule.monthlyReportHour) {
+              this.serviceManager.config.discord.schedule.monthlyReportHour = 20;
+              this.serviceManager.config.discord.schedule.monthlyReportMinute = 0;
+              this.serviceManager.config.discord.schedule.monthlyReportDay = '1';
+            }
+            
+            const oldHour = this.serviceManager.config.discord.schedule.monthlyReportHour;
+            const oldMinute = this.serviceManager.config.discord.schedule.monthlyReportMinute;
+            const oldDay = this.serviceManager.config.discord.schedule.monthlyReportDay || '1';
+            
+            // Update the configuration
+            this.serviceManager.config.discord.schedule.monthlyReportHour = newHour;
+            this.serviceManager.config.discord.schedule.monthlyReportMinute = newMinute;
+            this.serviceManager.config.discord.schedule.monthlyReportDay = cronDay;
+            
+            const oldDayDesc = oldDay === 'L' ? 'Last day of month' : 
+                              oldDay === '15' ? '15th of month' : '1st of month';
+            
+            embed = new EmbedBuilder()
+              .setTitle('📅 Monthly Schedule Updated')
+              .setColor(0x00AE86)
+              .addFields(
+                {
+                  name: 'Previous Monthly Schedule',
+                  value: `${oldDayDesc} at ${oldHour}:${oldMinute.toString().padStart(2, '0')} CEST`,
+                  inline: true
+                },
+                {
+                  name: 'New Monthly Schedule',
+                  value: `${dayDescription} at ${newHour}:${newMinute.toString().padStart(2, '0')} CEST`,
+                  inline: true
+                },
+                {
+                  name: '⚠️ Important Note',
+                  value: 'Monthly schedule change requires bot restart to take effect. The new schedule will be active after the next deployment.',
+                  inline: false
+                }
+              )
+              .setFooter({ text: 'Monthly schedules are temporary until restart. For permanent changes, update deployment configuration.' })
+              .setTimestamp();
+            
+            this.logger.info(`Monthly report schedule changed from ${oldDayDesc} ${oldHour}:${oldMinute.toString().padStart(2, '0')} to ${dayDescription} ${newHour}:${newMinute.toString().padStart(2, '0')} CEST by ${interaction.user.tag}`);
           }
           
           await interaction.editReply({ embeds: [embed] });
