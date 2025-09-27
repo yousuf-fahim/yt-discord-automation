@@ -1209,9 +1209,12 @@ ${transcript}`;
         });
       }
       
-      // Check summary prompt channels (dynamically detect all)
+      // Check summary prompt channels (dynamically detect all - with and without suffixes)
       const summaryPromptChannels = guild.channels.cache.filter(
-        ch => ch.name && ch.name.startsWith(this.config.prefixes.summaryPrompt)
+        ch => ch.name && (
+          ch.name.startsWith(this.config.prefixes.summaryPrompt) || // yt-summary-prompt-1, yt-summary-prompt-2, etc.
+          ch.name === this.config.prefixes.summaryPrompt.slice(0, -1) // yt-summary-prompt (without dash)
+        )
       );
       
       if (summaryPromptChannels.size === 0) {
@@ -1283,9 +1286,12 @@ ${transcript}`;
       return results;
     }
     
-    // Check summary prompts (dynamically detect all)
+    // Check summary prompts (dynamically detect all - with and without suffixes)
     const summaryPromptChannels = guild.channels.cache.filter(
-      ch => ch.name && ch.name.startsWith(this.config.prefixes.summaryPrompt)
+      ch => ch.name && (
+        ch.name.startsWith(this.config.prefixes.summaryPrompt) || // yt-summary-prompt-1, yt-summary-prompt-2, etc.
+        ch.name === this.config.prefixes.summaryPrompt.slice(0, -1) // yt-summary-prompt (without dash)
+      )
     );
     
     if (summaryPromptChannels.size === 0) {
