@@ -33,6 +33,9 @@ class CommandService {
     this.registerDebugCacheCommand();
     this.registerCheckSummariesCommand();
     this.registerClearCacheCommand();
+    this.registerConfigCommand();
+    this.registerSetModelCommand();
+    this.registerSetScheduleCommand();
     
     console.log(`✅ Registered ${this.commands.size} slash commands`);
   }
@@ -927,6 +930,195 @@ class CommandService {
         await interaction.reply({ content: errorMessage, ephemeral: true });
       }
     }
+  }
+
+  // ============ CONFIGURATION COMMANDS ============
+
+  registerConfigCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('config')
+      .setDescription('View current bot configuration');
+    
+    this.commands.set('config', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const config = this.serviceManager.config;
+          
+          const embed = new EmbedBuilder()
+            .setTitle('🔧 Bot Configuration')
+            .setColor(0x00AE86)
+            .addFields(
+              {
+                name: '🤖 OpenAI Settings',
+                value: `**Model**: ${config.openai.model}\n**Max Tokens**: ${config.openai.maxTokens}\n**API Key**: ${config.openai.apiKey ? '✅ Configured' : '❌ Missing'}`,
+                inline: true
+              },
+              {
+                name: '📅 Daily Report Schedule',
+                value: `**Time**: ${config.discord.schedule.dailyReportHour}:${config.discord.schedule.dailyReportMinute.toString().padStart(2, '0')} CEST`,
+                inline: true
+              },
+              {
+                name: '📊 Report Schedules',
+                value: `**Weekly**: Sundays 19:00 CEST\n**Monthly**: 1st of month 20:00 CEST`,
+                inline: true
+              }
+            )
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+        } catch (error) {
+          console.error('❌ Config command error:', error);
+          await interaction.editReply('❌ Failed to retrieve configuration');
+        }
+      }
+    });
+  }
+
+  registerSetModelCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('set-model')
+      .setDescription('Change the OpenAI model used for summaries')
+      .addStringOption(option =>
+        option.setName('model')
+          .setDescription('Select OpenAI model')
+          .setRequired(true)
+          .addChoices(
+            { name: 'GPT-4 Turbo (Recommended)', value: 'gpt-4-turbo' },
+            { name: 'GPT-4', value: 'gpt-4' },
+            { name: 'GPT-4o', value: 'gpt-4o' },
+            { name: 'GPT-4o Mini', value: 'gpt-4o-mini' },
+            { name: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' }
+          )
+      );
+    
+    this.commands.set('set-model', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const newModel = interaction.options.getString('model');
+          const oldModel = this.serviceManager.config.openai.model;
+          
+          // Update the configuration
+          this.serviceManager.config.openai.model = newModel;
+          
+          // Get summary service and update its config reference
+          const summaryService = this.serviceManager.getService('summary');
+          if (summaryService) {
+            summaryService.config.model = newModel;
+          }
+          
+          const embed = new EmbedBuilder()
+            .setTitle('✅ Model Updated')
+            .setColor(0x00AE86)
+            .addFields(
+              {
+                name: 'Previous Model',
+                value: `\`${oldModel}\``,
+                inline: true
+              },
+              {
+                name: 'New Model',
+                value: `\`${newModel}\``,
+                inline: true
+              },
+              {
+                name: 'Status',
+                value: '✅ Active - All new summaries will use the new model',
+                inline: false
+              }
+            )
+            .setFooter({ text: 'Note: This change is temporary and will reset on bot restart. For permanent changes, update OPENAI_MODEL environment variable.' })
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+          this.logger.info(`OpenAI model changed from ${oldModel} to ${newModel} by ${interaction.user.tag}`);
+        } catch (error) {
+          console.error('❌ Set model command error:', error);
+          await interaction.editReply('❌ Failed to update model');
+        }
+      }
+    });
+  }
+
+  registerSetScheduleCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('set-schedule')
+      .setDescription('Update daily report schedule')
+      .addIntegerOption(option =>
+        option.setName('hour')
+          .setDescription('Hour (0-23, CEST timezone)')
+          .setRequired(true)
+          .setMinValue(0)
+          .setMaxValue(23)
+      )
+      .addIntegerOption(option =>
+        option.setName('minute')
+          .setDescription('Minute (0-59)')
+          .setRequired(false)
+          .setMinValue(0)
+          .setMaxValue(59)
+      );
+    
+    this.commands.set('set-schedule', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const newHour = interaction.options.getInteger('hour');
+          const newMinute = interaction.options.getInteger('minute') || 0;
+          
+          const oldHour = this.serviceManager.config.discord.schedule.dailyReportHour;
+          const oldMinute = this.serviceManager.config.discord.schedule.dailyReportMinute;
+          
+          // Update the configuration
+          this.serviceManager.config.discord.schedule.dailyReportHour = newHour;
+          this.serviceManager.config.discord.schedule.dailyReportMinute = newMinute;
+          
+          const embed = new EmbedBuilder()
+            .setTitle('⏰ Schedule Updated')
+            .setColor(0x00AE86)
+            .addFields(
+              {
+                name: 'Previous Schedule',
+                value: `${oldHour}:${oldMinute.toString().padStart(2, '0')} CEST`,
+                inline: true
+              },
+              {
+                name: 'New Schedule',
+                value: `${newHour}:${newMinute.toString().padStart(2, '0')} CEST`,
+                inline: true
+              },
+              {
+                name: '⚠️ Important Note',
+                value: 'Schedule change requires bot restart to take effect. The new schedule will be active after the next deployment.',
+                inline: false
+              },
+              {
+                name: 'Fixed Schedules',
+                value: '📊 **Weekly**: Sundays 19:00 CEST\n📅 **Monthly**: 1st of month 20:00 CEST\n\n*These cannot be changed via commands*',
+                inline: false
+              }
+            )
+            .setFooter({ text: 'For permanent changes, update DAILY_REPORT_HOUR and DAILY_REPORT_MINUTE environment variables.' })
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+          this.logger.info(`Daily report schedule changed from ${oldHour}:${oldMinute.toString().padStart(2, '0')} to ${newHour}:${newMinute.toString().padStart(2, '0')} CEST by ${interaction.user.tag}`);
+        } catch (error) {
+          console.error('❌ Set schedule command error:', error);
+          await interaction.editReply('❌ Failed to update schedule');
+        }
+      }
+    });
   }
 }
 
