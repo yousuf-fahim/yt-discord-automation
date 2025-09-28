@@ -87,8 +87,8 @@ class SummaryService {
       );
       
       const systemMessage = customPrompt 
-        ? `You are an advanced content summarizer. Follow the user's specific instructions exactly. ${isJsonRequested ? 'If the prompt asks for JSON format, respond with valid JSON only - no extra text, code blocks, or formatting.' : 'Respond in the format requested by the user\'s prompt.'}`
-        : 'You are a helpful assistant that creates concise, informative summaries of YouTube video transcripts. Always respond in plain text format. Do not use JSON, code blocks, or any special formatting unless explicitly requested.';
+        ? `You are an advanced content summarizer. Follow the user's specific instructions exactly. ${isJsonRequested ? 'If the prompt asks for JSON format, respond with valid JSON only - no extra text, code blocks, or formatting.' : 'Respond in the format requested by the user\'s prompt.'} Always end your response with "\\n\\nLLM used: ${this.config.model}"`
+        : `You are a helpful assistant that creates concise, informative summaries of YouTube video transcripts. Always respond in plain text format. Do not use JSON, code blocks, or any special formatting unless explicitly requested. Always end your response with "\\n\\nLLM used: ${this.config.model}"`;
       
       // Log which model is being used for debugging
       this.logger.info(`Generating summary with model: ${this.config.model}`);
@@ -147,7 +147,7 @@ class SummaryService {
     try {
       this.logger.info('Generating custom report with OpenAI...');
       
-      const systemMessage = 'You are an advanced report generator. Follow the user\'s instructions exactly for format and content. Output exactly what is requested - do not add extra formatting, headers, or explanations unless specifically asked for in the prompt.';
+      const systemMessage = `You are an advanced report generator. Follow the user's instructions exactly for format and content. Output exactly what is requested - do not add extra formatting, headers, or explanations unless specifically asked for in the prompt. Always end your response with "\\n\\nLLM used: ${this.config.model}"`;
       
       const userPrompt = `${customPrompt}
 
@@ -262,7 +262,7 @@ VIDEO URL: ${videoUrl}`;
       const messages = [
         {
           role: "system",
-          content: "You are an AI assistant that generates custom daily reports based on user prompts. Follow the user's instructions exactly and maintain their preferred format and style."
+          content: `You are an AI assistant that generates custom daily reports based on user prompts. Follow the user's instructions exactly and maintain their preferred format and style. Always end your response with "\\n\\nLLM used: ${this.config.model}"`
         },
         {
           role: "user", 
