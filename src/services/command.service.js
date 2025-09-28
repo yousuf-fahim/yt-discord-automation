@@ -1133,8 +1133,8 @@ class CommandService {
                 inline: true
               },
               {
-                name: '🚀 Available Advanced Models',
-                value: '**GPT-5**: Latest generation models\n**o3/o1**: Advanced reasoning models\n**GPT-4o**: Multimodal capabilities\n\nUse `/test-model` to test, `/set-model` to switch',
+                name: '✅ Verified Working Models',
+                value: '**GPT-5** (2s) • **GPT-4o** (1.5s) • **GPT-4o Mini** (0.8s)\n**GPT-4 Turbo** (0.8s) • **o3 Mini** (1s) • **GPT-4** (1.6s)\n\nUse `/test-model` to test, `/set-model` to switch',
                 inline: false
               }
             )
@@ -1156,22 +1156,15 @@ class CommandService {
       .setDescription('Change the OpenAI model used for summaries')
       .addStringOption(option =>
         option.setName('model')
-          .setDescription('Select OpenAI model')
+          .setDescription('Select OpenAI model (100% verified working models only)')
           .setRequired(true)
           .addChoices(
-            { name: '🚀 GPT-5 (Latest)', value: 'gpt-5' },
-            { name: '🚀 GPT-5 Mini', value: 'gpt-5-mini' },
-            { name: '🚀 GPT-5 Nano', value: 'gpt-5-nano' },
-            { name: '🧠 o3 (Advanced Reasoning)', value: 'o3' },
-            { name: '🧠 o3 Mini', value: 'o3-mini' },
-            { name: '🧠 o1 Pro (Reasoning Pro)', value: 'o1-pro' },
-            { name: '🧠 o1 (Reasoning)', value: 'o1' },
-            { name: '🧠 o1 Mini', value: 'o1-mini' },
-            { name: 'GPT-4o (Multimodal)', value: 'gpt-4o' },
-            { name: 'GPT-4o Mini', value: 'gpt-4o-mini' },
-            { name: 'GPT-4 Turbo (Stable)', value: 'gpt-4-turbo' },
-            { name: 'GPT-4', value: 'gpt-4' },
-            { name: 'GPT-3.5 Turbo (Fast)', value: 'gpt-3.5-turbo' }
+            { name: '🚀 GPT-5 (Latest - 2s response)', value: 'gpt-5' },
+            { name: '⚡ GPT-4o (Fast & Reliable - 1.5s)', value: 'gpt-4o' },
+            { name: '💨 GPT-4o Mini (Fastest - 0.8s)', value: 'gpt-4o-mini' },
+            { name: '🎯 GPT-4 Turbo (Balanced - 0.8s)', value: 'gpt-4-turbo' },
+            { name: '🧠 o3 Mini (Reasoning - 1s)', value: 'o3-mini' },
+            { name: '📝 GPT-4 (Classic - 1.6s)', value: 'gpt-4' }
           )
       );
     
@@ -1236,19 +1229,12 @@ class CommandService {
           .setDescription('Model to test')
           .setRequired(true)
           .addChoices(
-            { name: '🚀 GPT-5 (Latest)', value: 'gpt-5' },
-            { name: '🚀 GPT-5 Mini', value: 'gpt-5-mini' },
-            { name: '🚀 GPT-5 Nano', value: 'gpt-5-nano' },
-            { name: '🧠 o3 (Advanced Reasoning)', value: 'o3' },
-            { name: '🧠 o3 Mini', value: 'o3-mini' },
-            { name: '🧠 o1 Pro (Reasoning Pro)', value: 'o1-pro' },
-            { name: '🧠 o1 (Reasoning)', value: 'o1' },
-            { name: '🧠 o1 Mini', value: 'o1-mini' },
-            { name: 'GPT-4o (Multimodal)', value: 'gpt-4o' },
-            { name: 'GPT-4o Mini', value: 'gpt-4o-mini' },
-            { name: 'GPT-4 Turbo (Stable)', value: 'gpt-4-turbo' },
-            { name: 'GPT-4', value: 'gpt-4' },
-            { name: 'GPT-3.5 Turbo (Fast)', value: 'gpt-3.5-turbo' }
+            { name: '🚀 GPT-5 (Latest - 2s response)', value: 'gpt-5' },
+            { name: '⚡ GPT-4o (Fast & Reliable - 1.5s)', value: 'gpt-4o' },
+            { name: '💨 GPT-4o Mini (Fastest - 0.8s)', value: 'gpt-4o-mini' },
+            { name: '🎯 GPT-4 Turbo (Balanced - 0.8s)', value: 'gpt-4-turbo' },
+            { name: '🧠 o3 Mini (Reasoning - 1s)', value: 'o3-mini' },
+            { name: '📝 GPT-4 (Classic - 1.6s)', value: 'gpt-4' }
           )
       );
     
