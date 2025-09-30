@@ -455,9 +455,12 @@ class CommandService {
             }
           }
           
-          // Daily report prompts (dynamic detection)
+          // Daily report prompts (dynamic detection - handle both with and without suffix)
           const dailyReportPromptChannels = guild.channels.cache.filter(
-            ch => ch.name && ch.name.startsWith(discordService.config.prefixes.dailyReportPrompt)
+            ch => ch.name && (
+              ch.name.startsWith(discordService.config.prefixes.dailyReportPrompt) || // yt-daily-report-prompt-1, etc.
+              ch.name === discordService.config.prefixes.dailyReportPrompt.slice(0, -1) // yt-daily-report-prompt (without dash)
+            )
           );
           
           if (dailyReportPromptChannels.size === 0) {
@@ -466,18 +469,31 @@ class CommandService {
             for (const [channelId, channel] of dailyReportPromptChannels) {
               try {
                 const prompt = await discordService.getCustomPromptFromChannel(channel.name);
-                const suffix = channel.name.replace(discordService.config.prefixes.dailyReportPrompt, '');
+                let suffix;
+                if (channel.name.startsWith(discordService.config.prefixes.dailyReportPrompt)) {
+                  suffix = channel.name.replace(discordService.config.prefixes.dailyReportPrompt, '');
+                } else {
+                  suffix = '(base)';
+                }
                 results.push(`✅ Daily Report Prompt ${suffix}: ${prompt ? 'Loaded' : 'Not found'}`);
               } catch (error) {
-                const suffix = channel.name.replace(discordService.config.prefixes.dailyReportPrompt, '');
+                let suffix;
+                if (channel.name.startsWith(discordService.config.prefixes.dailyReportPrompt)) {
+                  suffix = channel.name.replace(discordService.config.prefixes.dailyReportPrompt, '');
+                } else {
+                  suffix = '(base)';
+                }
                 results.push(`❌ Daily Report Prompt ${suffix}: ${error.message}`);
               }
             }
           }
           
-          // Weekly report prompts (dynamic detection)
+          // Weekly report prompts (dynamic detection - handle both with and without suffix)
           const weeklyReportPromptChannels = guild.channels.cache.filter(
-            ch => ch.name && ch.name.startsWith('yt-weekly-report-prompt-')
+            ch => ch.name && (
+              ch.name.startsWith(discordService.config.prefixes.weeklyReportPrompt) || // yt-weekly-report-prompt-1, etc.
+              ch.name === discordService.config.prefixes.weeklyReportPrompt.slice(0, -1) // yt-weekly-report-prompt (without dash)
+            )
           );
           
           if (weeklyReportPromptChannels.size === 0) {
@@ -486,18 +502,31 @@ class CommandService {
             for (const [channelId, channel] of weeklyReportPromptChannels) {
               try {
                 const prompt = await discordService.getCustomPromptFromChannel(channel.name);
-                const suffix = channel.name.replace('yt-weekly-report-prompt-', '');
+                let suffix;
+                if (channel.name.startsWith(discordService.config.prefixes.weeklyReportPrompt)) {
+                  suffix = channel.name.replace(discordService.config.prefixes.weeklyReportPrompt, '');
+                } else {
+                  suffix = '(base)';
+                }
                 results.push(`✅ Weekly Report Prompt ${suffix}: ${prompt ? 'Loaded' : 'Not found'}`);
               } catch (error) {
-                const suffix = channel.name.replace('yt-weekly-report-prompt-', '');
+                let suffix;
+                if (channel.name.startsWith(discordService.config.prefixes.weeklyReportPrompt)) {
+                  suffix = channel.name.replace(discordService.config.prefixes.weeklyReportPrompt, '');
+                } else {
+                  suffix = '(base)';
+                }
                 results.push(`❌ Weekly Report Prompt ${suffix}: ${error.message}`);
               }
             }
           }
           
-          // Monthly report prompts (dynamic detection)
+          // Monthly report prompts (dynamic detection - handle both with and without suffix)
           const monthlyReportPromptChannels = guild.channels.cache.filter(
-            ch => ch.name && ch.name.startsWith('yt-monthly-report-prompt-')
+            ch => ch.name && (
+              ch.name.startsWith(discordService.config.prefixes.monthlyReportPrompt) || // yt-monthly-report-prompt-1, etc.
+              ch.name === discordService.config.prefixes.monthlyReportPrompt.slice(0, -1) // yt-monthly-report-prompt (without dash)
+            )
           );
           
           if (monthlyReportPromptChannels.size === 0) {
@@ -506,10 +535,20 @@ class CommandService {
             for (const [channelId, channel] of monthlyReportPromptChannels) {
               try {
                 const prompt = await discordService.getCustomPromptFromChannel(channel.name);
-                const suffix = channel.name.replace('yt-monthly-report-prompt-', '');
+                let suffix;
+                if (channel.name.startsWith(discordService.config.prefixes.monthlyReportPrompt)) {
+                  suffix = channel.name.replace(discordService.config.prefixes.monthlyReportPrompt, '');
+                } else {
+                  suffix = '(base)';
+                }
                 results.push(`✅ Monthly Report Prompt ${suffix}: ${prompt ? 'Loaded' : 'Not found'}`);
               } catch (error) {
-                const suffix = channel.name.replace('yt-monthly-report-prompt-', '');
+                let suffix;
+                if (channel.name.startsWith(discordService.config.prefixes.monthlyReportPrompt)) {
+                  suffix = channel.name.replace(discordService.config.prefixes.monthlyReportPrompt, '');
+                } else {
+                  suffix = '(base)';
+                }
                 results.push(`❌ Monthly Report Prompt ${suffix}: ${error.message}`);
               }
             }

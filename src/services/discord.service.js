@@ -209,6 +209,9 @@ class DiscordService {
           return;
         }
 
+        // Add reaction for successful transcript extraction
+        await message.react('🗒️');
+
         // Get video title (try to extract from message or use video ID)
         const videoTitle = await this.getVideoTitle(videoId, message.content);
         
@@ -218,6 +221,7 @@ class DiscordService {
         // 2. Generate and send summaries to summary channels
         await this.processSummaryChannels(message.guild, videoId, videoTitle, transcript, message.content);
         
+        // Add reaction for successful summary execution
         await message.react('✅');
         
       } catch (error) {
@@ -724,9 +728,12 @@ ${transcript}`;
         throw new Error(`Guild with ID ${this.config.guildId} not found`);
       }
       
-      // Check for daily report prompt channels
+      // Check for daily report prompt channels (handle both with and without suffix)
       const dailyReportPromptChannels = guild.channels.cache.filter(
-        channel => channel.name && channel.name.startsWith(this.config.prefixes.dailyReportPrompt)
+        channel => channel.name && (
+          channel.name.startsWith(this.config.prefixes.dailyReportPrompt) || // yt-daily-report-prompt-1, etc.
+          channel.name === this.config.prefixes.dailyReportPrompt.slice(0, -1) // yt-daily-report-prompt (without dash)
+        )
       );
       
       if (dailyReportPromptChannels.size > 0) {
@@ -848,9 +855,12 @@ ${transcript}`;
         throw new Error(`Guild with ID ${this.config.guildId} not found`);
       }
       
-      // Check for weekly report prompt channels
+      // Check for weekly report prompt channels (handle both with and without suffix)
       const weeklyReportPromptChannels = guild.channels.cache.filter(
-        channel => channel.name && channel.name.startsWith(this.config.prefixes.weeklyReportPrompt)
+        channel => channel.name && (
+          channel.name.startsWith(this.config.prefixes.weeklyReportPrompt) || // yt-weekly-report-prompt-1, etc.
+          channel.name === this.config.prefixes.weeklyReportPrompt.slice(0, -1) // yt-weekly-report-prompt (without dash)
+        )
       );
       
       if (weeklyReportPromptChannels.size > 0) {
@@ -950,9 +960,12 @@ ${transcript}`;
         throw new Error(`Guild with ID ${this.config.guildId} not found`);
       }
       
-      // Check for monthly report prompt channels
+      // Check for monthly report prompt channels (handle both with and without suffix)
       const monthlyReportPromptChannels = guild.channels.cache.filter(
-        channel => channel.name && channel.name.startsWith(this.config.prefixes.monthlyReportPrompt)
+        channel => channel.name && (
+          channel.name.startsWith(this.config.prefixes.monthlyReportPrompt) || // yt-monthly-report-prompt-1, etc.
+          channel.name === this.config.prefixes.monthlyReportPrompt.slice(0, -1) // yt-monthly-report-prompt (without dash)
+        )
       );
       
       if (monthlyReportPromptChannels.size > 0) {
@@ -1319,9 +1332,12 @@ ${transcript}`;
       }
     }
     
-    // Check daily report prompts (only existing channels)
+    // Check daily report prompts (handle both with and without suffix)
     const dailyReportPromptChannels = guild.channels.cache.filter(
-      ch => ch.name && ch.name.startsWith(this.config.prefixes.dailyReportPrompt)
+      ch => ch.name && (
+        ch.name.startsWith(this.config.prefixes.dailyReportPrompt) || // yt-daily-report-prompt-1, etc.
+        ch.name === this.config.prefixes.dailyReportPrompt.slice(0, -1) // yt-daily-report-prompt (without dash)
+      )
     );
     
     if (dailyReportPromptChannels.size > 0) {
@@ -1343,9 +1359,12 @@ ${transcript}`;
       }
     }
     
-    // Check weekly report prompts (only existing channels)
+    // Check weekly report prompts (handle both with and without suffix)
     const weeklyReportPromptChannels = guild.channels.cache.filter(
-      ch => ch.name && ch.name.startsWith(this.config.prefixes.weeklyReportPrompt)
+      ch => ch.name && (
+        ch.name.startsWith(this.config.prefixes.weeklyReportPrompt) || // yt-weekly-report-prompt-1, etc.
+        ch.name === this.config.prefixes.weeklyReportPrompt.slice(0, -1) // yt-weekly-report-prompt (without dash)
+      )
     );
     
     if (weeklyReportPromptChannels.size > 0) {
@@ -1367,9 +1386,12 @@ ${transcript}`;
       }
     }
     
-    // Check monthly report prompts (only existing channels)
+    // Check monthly report prompts (handle both with and without suffix)
     const monthlyReportPromptChannels = guild.channels.cache.filter(
-      ch => ch.name && ch.name.startsWith(this.config.prefixes.monthlyReportPrompt)
+      ch => ch.name && (
+        ch.name.startsWith(this.config.prefixes.monthlyReportPrompt) || // yt-monthly-report-prompt-1, etc.
+        ch.name === this.config.prefixes.monthlyReportPrompt.slice(0, -1) // yt-monthly-report-prompt (without dash)
+      )
     );
     
     if (monthlyReportPromptChannels.size > 0) {
