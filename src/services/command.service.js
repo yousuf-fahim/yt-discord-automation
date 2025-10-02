@@ -886,9 +886,10 @@ class CommandService {
           
           const cacheService = this.serviceManager.getService('cache');
           const reportService = this.serviceManager.getService('report');
+          const discordService = this.serviceManager.getService('discord');
           
-          if (!cacheService || !reportService) {
-            throw new Error('Cache or Report service not available');
+          if (!cacheService || !reportService || !discordService) {
+            throw new Error('Cache, Report, or Discord service not available');
           }
           
           let description = '📋 **Summary Check Results:**\n\n';
@@ -919,17 +920,23 @@ class CommandService {
             });
           }
           
-          const embed = new EmbedBuilder()
-            .setTitle('📋 Summary Status Check')
-            .setDescription(description.substring(0, 4000))
-            .setColor(todaysSummaries.length > 0 ? 0x51cf66 : 0xff6b6b)
-            .setTimestamp();
-          
-          await interaction.editReply({ embeds: [embed] });
-          
+          // If description is too long, send as file
+          if (description.length > 2000) {
+            await discordService.sendLongMessage(
+              interaction.channel, 
+              description, 
+              { 
+                fileName: 'summary_check', 
+                fileFormat: 'txt',
+                fallbackMessage: 'Summary check results are too long for Discord. See attached file.'
+              }
+            );
+          } else {
+            await interaction.editReply(description);
+          }
         } catch (error) {
-          console.error('❌ Check summaries command error:', error);
-          await interaction.editReply('❌ Error checking summaries: ' + error.message);
+          console.error('Error in check-summaries command:', error);
+          await interaction.editReply(`❌ Error checking summaries: ${error.message}`);
         }
       }
     });

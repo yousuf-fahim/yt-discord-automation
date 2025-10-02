@@ -222,49 +222,36 @@ class ReportService {
     }
   }
 
-  async saveSummary(videoId, videoTitle, summaryContent, videoUrl) {
+  async saveSummary(summary) {
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const dateStr = today.toISOString().split('T')[0];
-      const summaryKey = `summaries_${dateStr}`;
+      const today = new Date().toISOString().split('T')[0];
+      const cacheService = this.serviceManager.getService('cache');
       
-      console.log(`💾 Saving summary for ${videoId} to cache key: ${summaryKey}`);
+      if (!cacheService) {
+        this.logger.error('Cache service not available');
+        return false;
+      }
       
-      // Get existing summaries for today
-      const existingSummaries = await this.getSummariesByDate(today);
-      console.log(`📊 Existing summaries for today: ${existingSummaries.length}`);
+      // Retrieve existing summaries for today
+      const todaySummaries = await cacheService.get(`summaries_${today}`) || [];
       
-      // Add new summary with consistent field names
-      const newSummary = {
-        videoId,
-        videoTitle, // Use consistent field name
-        summaryContent, // Use consistent field name  
-        videoUrl, // Use consistent field name
-        timestamp: new Date().toISOString()
-      };
-      
-      console.log(`📝 New summary object:`, {
-        videoId: newSummary.videoId,
-        title: newSummary.videoTitle?.substring(0, 50) + '...',
-        contentLength: newSummary.summaryContent?.length,
-        timestamp: newSummary.timestamp
+      // Add new summary
+      todaySummaries.push({
+        videoId: summary.videoId,
+        videoTitle: summary.videoTitle,
+        summaryContent: summary.summaryContent,
+        videoUrl: summary.videoUrl,
+        timestamp: Date.now()
       });
       
-      // Avoid duplicates
-      const filtered = existingSummaries.filter(s => s.videoId !== videoId);
-      filtered.push(newSummary);
+      // Save updated summaries
+      await cacheService.set(`summaries_${today}`, todaySummaries);
       
-      console.log(`📊 Total summaries after adding: ${filtered.length}`);
-      
-      // Save back to cache
-      const saved = await this.cache.set(summaryKey, filtered);
-      console.log(`💾 Cache save result: ${saved}`);
-      
-      this.logger.info(`Summary saved for video: ${videoTitle}`);
+      this.logger.info(`Saved summary for video ${summary.videoId} to daily cache`);
+      return true;
     } catch (error) {
-      this.logger.error('Error saving summary', error);
-      console.error('💥 Save summary error:', error);
+      this.logger.error('Error saving summary to cache', error);
+      return false;
     }
   }
 

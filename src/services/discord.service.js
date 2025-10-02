@@ -529,79 +529,105 @@ ${transcript}`;
     }
   }
 
-  async sendLongMessage(target, content, maxLength = 1900) {
-    // Split long messages to avoid Discord's 2000 character limit
-    // Using 1900 to leave some buffer for formatting
-    // target can be a message (for replies) or a channel (for direct sends)
-    
-    if (content.length <= maxLength) {
-      if (target.reply) {
-        await target.reply(content);
-      } else {
-        await target.send(content);
-      }
-      return;
+  /**
+   * Send a long message, breaking it into multiple messages or creating a file if too long
+   * @param {import('discord.js').TextChannel} channel - Channel to send message
+   * @param {string} content - Message content
+   * @param {Object} options - Additional options
+   */
+  async sendLongMessage(channel, content, options = {}) {
+    const MAX_DISCORD_MESSAGE_LENGTH = 2000;
+    const { 
+      fileFormat = 'txt', 
+      fileName = `output_${Date.now()}`, 
+      fallbackMessage = 'Content too long for Discord. See attached file.' 
+    } = options;
+
+    // If content is short enough, send directly
+    if (content.length <= MAX_DISCORD_MESSAGE_LENGTH) {
+      return await channel.send(content);
     }
 
-    // Split content into chunks
-    const chunks = [];
-    let currentChunk = '';
-    const lines = content.split('\n');
-    
-    for (const line of lines) {
-      // If adding this line would exceed the limit
-      if ((currentChunk + '\n' + line).length > maxLength) {
-        if (currentChunk) {
-          chunks.push(currentChunk.trim());
-          currentChunk = line;
-        } else {
-          // Single line is too long, split it
-          const words = line.split(' ');
-          let wordChunk = '';
-          for (const word of words) {
-            if ((wordChunk + ' ' + word).length > maxLength) {
-              if (wordChunk) {
-                chunks.push(wordChunk.trim());
-                wordChunk = word;
-              } else {
-                // Single word is too long, truncate it
-                chunks.push(word.substring(0, maxLength - 3) + '...');
-                wordChunk = '';
-              }
-            } else {
-              wordChunk += (wordChunk ? ' ' : '') + word;
-            }
-          }
-          if (wordChunk) {
-            currentChunk = wordChunk;
-          }
-        }
-      } else {
-        currentChunk += (currentChunk ? '\n' : '') + line;
-      }
-    }
-    
-    if (currentChunk) {
-      chunks.push(currentChunk.trim());
+    // Prepare file
+    const fileContent = content;
+    const fileBuffer = Buffer.from(fileContent, 'utf-8');
+    const attachment = new this.client.discord.MessageAttachment(
+      fileBuffer, 
+      `${fileName}.${fileFormat}`
+    );
+
+    // Send with file
+    return await channel.send({
+      content: fallbackMessage,
+      files: [attachment]
+    });
+  }
+
+  /**
+   * Convert content to JSON or text file based on request
+   * @param {string} content - Content to convert
+   * @param {string} format - Desired output format (json or txt)
+   * @param {string} fileName - Base filename
+   * @returns {Buffer} File buffer
+   */
+  convertToFileBuffer(content, format = 'txt', fileName = 'output') {
+    let fileContent;
+    switch (format.toLowerCase()) {
+      case 'json':
+        fileContent = JSON.stringify(
+          typeof content === 'string' 
+            ? { text: content } 
+            : content, 
+          null, 2
+        );
+        break;
+      case 'txt':
+      default:
+        fileContent = content;
     }
 
-    // Send chunks
-    for (let i = 0; i < chunks.length; i++) {
-      const chunkContent = i === 0 ? chunks[i] : `**Continued...**\n\n${chunks[i]}`;
-      
-      if (target.reply && i === 0) {
-        await target.reply(chunkContent);
-      } else if (target.channel) {
-        await target.channel.send(chunkContent);
-      } else {
-        await target.send(chunkContent);
-      }
-      
-      // Small delay between messages to avoid rate limiting
-      if (i < chunks.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+    return {
+      buffer: Buffer.from(fileContent, 'utf-8'),
+      fileName: `${fileName}.${format}`
+    };
+  }
+
+  /**
+   * Handle long prompts by saving to file or breaking into multiple messages
+   * @param {import('discord.js').TextChannel} channel - Channel to send prompt
+   * @param {string} prompt - Prompt content
+   * @param {Object} options - Additional options
+   */
+  async handleLongPrompt(channel, prompt, options = {}) {
+    const MAX_DISCORD_MESSAGE_LENGTH = 2000;
+    const { 
+      fileFormat = 'txt', 
+      fileName = `prompt_${Date.now()}`, 
+      fallbackMessage = 'Prompt too long for Discord. See attached file.' 
+    } = options;
+
+    // If prompt is short enough, send directly
+    if (prompt.length <= MAX_DISCORD_MESSAGE_LENGTH) {
+      return await channel.send(prompt);
     }
+
+    // Prepare file
+    const { buffer, fileName: generatedFileName } = this.convertToFileBuffer(
+      prompt, 
+      fileFormat, 
+      fileName
+    );
+
+    const attachment = new this.client.discord.MessageAttachment(
+      buffer, 
+      generatedFileName
+    );
+
+    // Send with file
+    return await channel.send({
+      content: fallbackMessage,
+      files: [attachment]
+    });
   }
 
   async start() {
