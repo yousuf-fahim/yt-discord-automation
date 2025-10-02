@@ -2,7 +2,7 @@
  * Discord Service - Discord bot management and message handling
  */
 
-const { Client, GatewayIntentBits, Events, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Events, REST, Routes, AttachmentBuilder } = require('discord.js');
 const cron = require('node-cron');
 const CommandService = require('./command.service');
 
@@ -540,27 +540,49 @@ ${transcript}`;
     const { 
       fileFormat = 'txt', 
       fileName = `output_${Date.now()}`, 
-      fallbackMessage = 'Content too long for Discord. See attached file.' 
+      fallbackMessage = 'Content too long for Discord. See attached file.',
+      forceFile = false  // Option to force file attachment even if content fits
     } = options;
 
-    // If content is short enough, send directly
-    if (content.length <= MAX_DISCORD_MESSAGE_LENGTH) {
+    // Detect if content is JSON
+    const isJsonContent = this.isJsonString(content);
+    const effectiveFormat = isJsonContent ? 'json' : fileFormat;
+
+    // If content is short enough and not forced to file, send directly
+    if (content.length <= MAX_DISCORD_MESSAGE_LENGTH && !forceFile) {
       return await channel.send(content);
     }
 
-    // Prepare file
+    // For JSON content or large content, create a file attachment
+    this.logger.info(`Sending long message as ${effectiveFormat} file (${content.length} chars)`);
+    
     const fileContent = content;
     const fileBuffer = Buffer.from(fileContent, 'utf-8');
-    const attachment = new this.client.discord.MessageAttachment(
-      fileBuffer, 
-      `${fileName}.${fileFormat}`
-    );
+    const attachment = new AttachmentBuilder(fileBuffer, {
+      name: `${fileName}.${effectiveFormat}`
+    });
 
     // Send with file
     return await channel.send({
       content: fallbackMessage,
       files: [attachment]
     });
+  }
+
+  /**
+   * Check if a string is valid JSON
+   */
+  isJsonString(str) {
+    try {
+      const trimmed = str.trim();
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        return false;
+      }
+      JSON.parse(trimmed);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /**
@@ -618,10 +640,9 @@ ${transcript}`;
       fileName
     );
 
-    const attachment = new this.client.discord.MessageAttachment(
-      buffer, 
-      generatedFileName
-    );
+    const attachment = new AttachmentBuilder(buffer, {
+      name: generatedFileName
+    });
 
     // Send with file
     return await channel.send({

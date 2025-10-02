@@ -64,17 +64,34 @@ class SummaryService {
 
   /**
    * Intelligently truncate transcript for better AI processing
+   * Takes into account model-specific context windows
    * @param {string} transcript - Full video transcript
    * @param {Object} options - Truncation options
    * @returns {string} Optimized transcript
    */
   optimizeTranscriptContext(transcript, options = {}) {
     const {
-      maxTokens = 4000,  // Typical OpenAI context window
-      extractionStrategy = 'key_sections',
+      extractionStrategy = 'smart',
       minSectionLength = 50,
       maxSections = 10
     } = options;
+
+    // Determine max INPUT tokens based on model (context window)
+    // Leave room for system prompt, output, etc.
+    const model = this.config.model.toLowerCase();
+    let maxInputTokens;
+    
+    if (model.includes('gpt-5')) {
+      maxInputTokens = 110000; // GPT-5 has 128K context, use 110K for input (reserve space for output)
+    } else if (model.includes('gpt-4-turbo') || model.includes('gpt-4o')) {
+      maxInputTokens = 110000; // GPT-4 Turbo/4o also have 128K context
+    } else if (model.includes('gpt-4')) {
+      maxInputTokens = 6000; // GPT-4 has 8K context, use 6K for input
+    } else if (model.includes('o1') || model.includes('o3')) {
+      maxInputTokens = 90000; // o1/o3 models have 128K context, reserve more for reasoning
+    } else {
+      maxInputTokens = 3000; // Conservative default for older models
+    }
 
     // Basic preprocessing
     const cleanedTranscript = transcript
@@ -83,8 +100,34 @@ class SummaryService {
       .replace(/\n{2,}/g, '\n')  // Normalize newlines
       .trim();
 
+    // Rough token estimation: ~4 characters per token
+    const estimatedTokens = Math.ceil(cleanedTranscript.length / 4);
+    
+    // If transcript fits in context window, return as-is
+    if (estimatedTokens <= maxInputTokens) {
+      this.logger.debug(`Transcript fits in context window: ${estimatedTokens} tokens (max input: ${maxInputTokens})`);
+      return cleanedTranscript;
+    }
+
+    // If transcript is too large, apply extraction strategy
+    this.logger.warn(`⚠️  Transcript too large (${estimatedTokens} tokens), applying ${extractionStrategy} strategy (max input: ${maxInputTokens} tokens)`);
+
     // Strategy-based extraction
     switch (extractionStrategy) {
+      case 'smart': {
+        // Smart extraction: beginning + middle + end (capture intro, main content, conclusion)
+        const targetChars = maxInputTokens * 4 * 0.85; // 85% of max to be safe
+        const chunkSize = Math.floor(targetChars / 3);
+        
+        const beginning = cleanedTranscript.substring(0, chunkSize);
+        const middleStart = Math.floor(cleanedTranscript.length / 2 - chunkSize / 2);
+        const middle = cleanedTranscript.substring(middleStart, middleStart + chunkSize);
+        const end = cleanedTranscript.substring(cleanedTranscript.length - chunkSize);
+        
+        this.logger.info(`📝 Applied smart extraction: ${Math.ceil(targetChars/4)} tokens (from ${estimatedTokens} tokens)`);
+        return `${beginning}\n\n[... middle content ...]\n\n${middle}\n\n[... later content ...]\n\n${end}`;
+      }
+
       case 'key_sections': {
         // Extract most informative sections
         const sections = cleanedTranscript.split('\n')
@@ -95,24 +138,27 @@ class SummaryService {
           .slice(0, maxSections)
           .sort((a, b) => cleanedTranscript.indexOf(a) - cleanedTranscript.indexOf(b));
 
-        return selectedSections.join('\n');
+        const result = selectedSections.join('\n');
+        this.logger.info(`📝 Applied key sections extraction: ${Math.ceil(result.length/4)} tokens (from ${estimatedTokens} tokens)`);
+        return result;
       }
 
-      case 'sliding_window': {
-        // Use sliding window approach
-        const words = cleanedTranscript.split(/\s+/);
-        const windowSize = Math.floor(maxTokens / 4);  // Rough token estimation
-        
-        const windows = [];
-        for (let i = 0; i < words.length; i += windowSize) {
-          windows.push(words.slice(i, i + windowSize).join(' '));
-        }
-
-        return windows[0];  // Return first window, could be enhanced later
+      case 'truncate': {
+        // Simple truncation to max tokens
+        const targetChars = maxInputTokens * 4 * 0.85;
+        const result = cleanedTranscript.substring(0, targetChars);
+        this.logger.info(`📝 Applied truncation: ${Math.ceil(result.length/4)} tokens (from ${estimatedTokens} tokens)`);
+        return result;
       }
 
       default:
-        return cleanedTranscript;
+        // Default: use beginning and end
+        const targetChars = maxInputTokens * 4 * 0.85;
+        const halfChars = Math.floor(targetChars / 2);
+        const beginning = cleanedTranscript.substring(0, halfChars);
+        const end = cleanedTranscript.substring(cleanedTranscript.length - halfChars);
+        this.logger.info(`📝 Applied beginning+end extraction: ${Math.ceil(targetChars/4)} tokens (from ${estimatedTokens} tokens)`);
+        return `${beginning}\n\n[... content omitted ...]\n\n${end}`;
     }
   }
 
@@ -194,19 +240,28 @@ CRITICAL CONSTRAINTS:
         outputFormat: 'markdown'
       });
 
-      // Call OpenAI with enhanced parameters
-      const summaryResponse = await this.openai.chat.completions.create({
-        model: 'gpt-4-turbo',  // Use latest model
+      // Build request parameters using the configured model
+      const requestParams = {
+        model: this.config.model,  // Use configured model (supports GPT-5, GPT-4, etc.)
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: optimizedTranscript }
         ],
-        temperature: 0.3,  // Lower temperature for more consistent output
-        max_tokens: 750,
-        top_p: 0.8,
-        frequency_penalty: 0.2,
-        presence_penalty: 0.1
-      });
+        ...this.getModelParameters(0.3)  // Use helper for correct parameters based on model
+      };
+
+      // Add optional parameters for non-reasoning models (GPT-4, GPT-4-turbo, etc.)
+      const model = this.config.model.toLowerCase();
+      if (!model.includes('gpt-5') && !model.includes('o1') && !model.includes('o3')) {
+        requestParams.top_p = 0.8;
+        requestParams.frequency_penalty = 0.2;
+        requestParams.presence_penalty = 0.1;
+      }
+
+      this.logger.info(`Generating summary with model: ${this.config.model}`);
+
+      // Call OpenAI with proper parameters
+      const summaryResponse = await this.openai.chat.completions.create(requestParams);
 
       const summary = summaryResponse.choices[0].message.content.trim();
 
@@ -220,7 +275,7 @@ CRITICAL CONSTRAINTS:
         videoUrl
       };
     } catch (error) {
-      this.logger.error('Summary generation failed', error);
+      this.logger.error(`Summary generation failed with ${this.config.model}`, error);
       throw error;
     }
   }

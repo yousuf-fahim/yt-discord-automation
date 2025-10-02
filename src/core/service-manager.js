@@ -53,7 +53,8 @@ class ServiceManager extends EventEmitter {
       openai: {
         apiKey: process.env.OPENAI_API_KEY,
         model: process.env.OPENAI_MODEL || 'gpt-4-turbo',
-        maxTokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 4000
+        // Default max tokens based on model - can be overridden with OPENAI_MAX_TOKENS
+        maxTokens: parseInt(process.env.OPENAI_MAX_TOKENS) || this.getDefaultMaxTokens(process.env.OPENAI_MODEL)
       },
       youtube: {
         apiKey: process.env.YOUTUBE_API_KEY
@@ -71,6 +72,26 @@ class ServiceManager extends EventEmitter {
     };
 
     return defaultConfig;
+  }
+
+  /**
+   * Get default max tokens based on model
+   */
+  getDefaultMaxTokens(modelName) {
+    if (!modelName) return 4000;
+    
+    const model = modelName.toLowerCase();
+    if (model.includes('gpt-5')) {
+      return 16000; // GPT-5 can handle much more, but 16K is good for summaries
+    } else if (model.includes('gpt-4-turbo') || model.includes('gpt-4o')) {
+      return 16000; // GPT-4 Turbo/4o have 128K context
+    } else if (model.includes('o1') || model.includes('o3')) {
+      return 8000; // o1/o3 models (reasoning models need more output tokens)
+    } else if (model.includes('gpt-4')) {
+      return 4000; // Standard GPT-4
+    } else {
+      return 4000; // Safe default
+    }
   }
 
   /**

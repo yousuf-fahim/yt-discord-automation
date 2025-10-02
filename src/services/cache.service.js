@@ -137,8 +137,16 @@ class CacheService {
       const summaries = {};
       for (const file of summaryFiles) {
         const date = file.replace('summaries_', '').replace('.json', '');
-        const data = await this.get(`summaries_${date}`);
-        summaries[date] = data || [];
+        const cached = await this.get(`summaries_${date}`);
+        
+        // Handle both old format (array) and new format ({data: array, timestamp: number})
+        if (Array.isArray(cached)) {
+          summaries[date] = cached;
+        } else if (cached && cached.data && Array.isArray(cached.data)) {
+          summaries[date] = cached.data;
+        } else {
+          summaries[date] = [];
+        }
       }
       
       return summaries;
@@ -150,8 +158,15 @@ class CacheService {
 
   async getTodaysSummaries() {
     const today = new Date().toISOString().split('T')[0];
-    const data = await this.get(`summaries_${today}`);
-    return data || [];
+    const cached = await this.get(`summaries_${today}`);
+    
+    // Handle both old format (array) and new format ({data: array, timestamp: number})
+    if (Array.isArray(cached)) {
+      return cached;
+    } else if (cached && cached.data && Array.isArray(cached.data)) {
+      return cached.data;
+    }
+    return [];
   }
 
   async debugCache(pattern = '') {

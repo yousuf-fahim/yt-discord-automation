@@ -275,7 +275,14 @@ class ReportService {
       const summaryKey = `summaries_${dateStr}`;
       
       const cached = await this.cache.get(summaryKey);
-      return cached ? cached : [];
+      
+      // Handle both old format (array) and new format ({data: array, timestamp: number})
+      if (Array.isArray(cached)) {
+        return cached;
+      } else if (cached && cached.data && Array.isArray(cached.data)) {
+        return cached.data;
+      }
+      return [];
     } catch (error) {
       this.logger.error(`Error getting summaries for ${date}`, error);
       return [];
