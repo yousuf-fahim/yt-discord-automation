@@ -9,15 +9,15 @@ class SummaryService {
     // Handle both old (direct config/openai) and new (ServiceManager) initialization
     if (serviceManager.config) {
       // New ServiceManager pattern
-      this.serviceManager = serviceManager;
+    this.serviceManager = serviceManager;
       this.config = serviceManager.config.openai;
-      this.logger = serviceManager.logger;
+    this.logger = serviceManager.logger;
       this.cache = dependencies?.cache;
-      
+    
       // Initialize OpenAI client
-      this.openai = new OpenAI({ 
-        apiKey: this.config.apiKey 
-      });
+    this.openai = new OpenAI({
+      apiKey: this.config.apiKey
+    });
     } else {
       // Legacy direct initialization (for backward compatibility)
       this.config = serviceManager; // First param is actually config
@@ -51,8 +51,8 @@ class SummaryService {
     // Test OpenAI connection
     try {
       if (this.openai) {
-        await this.openai.models.list();
-        this.logger.info('Summary service initialized with OpenAI');
+      await this.openai.models.list();
+      this.logger.info('Summary service initialized with OpenAI');
       } else {
         throw new Error('OpenAI client not initialized');
       }
@@ -62,85 +62,237 @@ class SummaryService {
     }
   }
 
-  async generateSummary(transcript, videoTitle, videoUrl, customPrompt = null) {
-    // Include model in cache key to ensure different models generate separate cache entries
-    const cacheKey = `summary_${this.config.model}_${this.hashString(transcript + (customPrompt || ''))}`;
-    
-    // Check cache first (if available)
-    if (this.cache) {
-      const cached = await this.cache.get(cacheKey);
-      if (cached) {
-        this.logger.debug(`Using cached summary (model: ${this.config.model})`);
-        return cached;
-      }
-    }
+  /**
+   * Intelligently truncate transcript for better AI processing
+   * @param {string} transcript - Full video transcript
+   * @param {Object} options - Truncation options
+   * @returns {string} Optimized transcript
+   */
+  optimizeTranscriptContext(transcript, options = {}) {
+    const {
+      maxTokens = 4000,  // Typical OpenAI context window
+      extractionStrategy = 'key_sections',
+      minSectionLength = 50,
+      maxSections = 10
+    } = options;
 
+    // Basic preprocessing
+    const cleanedTranscript = transcript
+      .replace(/\[.*?\]/g, '')  // Remove brackets
+      .replace(/\(.*?\)/g, '')  // Remove parentheses
+      .replace(/\n{2,}/g, '\n')  // Normalize newlines
+      .trim();
+
+    // Strategy-based extraction
+    switch (extractionStrategy) {
+      case 'key_sections': {
+        // Extract most informative sections
+        const sections = cleanedTranscript.split('\n')
+          .filter(section => section.length >= minSectionLength)
+          .sort((a, b) => b.length - a.length);  // Prioritize longer sections
+
+        const selectedSections = sections
+          .slice(0, maxSections)
+          .sort((a, b) => cleanedTranscript.indexOf(a) - cleanedTranscript.indexOf(b));
+
+        return selectedSections.join('\n');
+      }
+
+      case 'sliding_window': {
+        // Use sliding window approach
+        const words = cleanedTranscript.split(/\s+/);
+        const windowSize = Math.floor(maxTokens / 4);  // Rough token estimation
+        
+        const windows = [];
+        for (let i = 0; i < words.length; i += windowSize) {
+          windows.push(words.slice(i, i + windowSize).join(' '));
+        }
+
+        return windows[0];  // Return first window, could be enhanced later
+      }
+
+      default:
+        return cleanedTranscript;
+    }
+  }
+
+  /**
+   * Generate advanced system prompt with dynamic instructions
+   * @param {string} videoTitle - Title of the video
+   * @param {Object} options - Prompt customization options
+   * @returns {string} Refined system prompt
+   */
+  generateAdvancedSystemPrompt(videoTitle, options = {}) {
+    const {
+      tone = 'professional',
+      detailLevel = 'comprehensive',
+      outputFormat = 'markdown'
+    } = options;
+
+    const toneInstructions = {
+      'professional': 'Use a clear, concise, and objective tone.',
+      'conversational': 'Use a friendly, engaging, and slightly informal tone.',
+      'academic': 'Maintain a scholarly and analytical tone with precise language.'
+    };
+
+    const detailLevelInstructions = {
+      'brief': 'Focus on the most critical 3-5 key points.',
+      'moderate': 'Provide a balanced overview with main points and supporting details.',
+      'comprehensive': 'Offer an in-depth analysis covering nuanced aspects of the content.'
+    };
+
+    const outputFormatInstructions = {
+      'markdown': '- Use markdown formatting\n- Include headers, bullet points, and emphasis\n- Ensure readability',
+      'plain': 'Use simple, clean text without special formatting',
+      'structured': 'Use a clear, hierarchical structure with numbered/nested points'
+    };
+
+    return `You are an expert content summarizer. Your task is to generate a high-quality summary.
+
+VIDEO CONTEXT: ${videoTitle}
+
+CORE INSTRUCTIONS:
+1. ${toneInstructions[tone]}
+2. ${detailLevelInstructions[detailLevel]}
+3. ${outputFormatInstructions[outputFormat]}
+
+ADVANCED GUIDELINES:
+- Extract the most meaningful and impactful information
+- Prioritize insights over mere repetition
+- Maintain the original context and intent of the content
+- Be objective and avoid personal bias
+- If the content lacks substantial information, clearly state that
+
+OUTPUT REQUIREMENTS:
+- Maximum length: 500-750 words
+- Ensure coherence and logical flow
+- Proofread for clarity and precision
+
+CRITICAL CONSTRAINTS:
+- Do NOT hallucinate or add information not present in the source
+- If key information is missing, indicate gaps in understanding
+- Provide a neutral, fact-based summary`;
+  }
+
+  /**
+   * Generate summary with advanced quality control
+   * @param {string} transcript - Video transcript
+   * @param {string} videoTitle - Video title
+   * @param {string} videoUrl - Video URL
+   * @param {string} customPrompt - Optional custom prompt
+   * @returns {Promise<string>} Generated summary
+   */
+  async generateSummary(transcript, videoTitle, videoUrl, customPrompt = null) {
     try {
-      const prompt = customPrompt 
-        ? this.buildCustomPrompt(customPrompt, transcript, videoTitle, videoUrl)
-        : this.buildSummaryPrompt(transcript, videoTitle);
-      
-      const isJsonRequested = customPrompt && (
-        customPrompt.toLowerCase().includes('json') || 
-        customPrompt.toLowerCase().includes('{') || 
-        customPrompt.toLowerCase().includes('}')
-      );
-      
-      const systemMessage = customPrompt 
-        ? `You are an advanced content summarizer. Follow the user's specific instructions exactly. ${isJsonRequested ? 'If the prompt asks for JSON format, respond with valid JSON only - no extra text, code blocks, or formatting.' : 'Respond in the format requested by the user\'s prompt.'} Always end your response with "\\n\\nLLM used: ${this.config.model}"`
-        : `You are a helpful assistant that creates concise, informative summaries of YouTube video transcripts. Always respond in plain text format. Do not use JSON, code blocks, or any special formatting unless explicitly requested. Always end your response with "\\n\\nLLM used: ${this.config.model}"`;
-      
-      // Log which model is being used for debugging
-      this.logger.info(`Generating summary with model: ${this.config.model}`);
-      
-      const response = await this.openai.chat.completions.create({
-        model: this.config.model,
-        messages: [
-          { role: 'system', content: systemMessage },
-          { role: 'user', content: prompt }
-        ],
-        ...this.getModelParameters(0.3)
+      // Optimize transcript context
+      const optimizedTranscript = this.optimizeTranscriptContext(transcript);
+
+      // Determine prompt strategy
+      const systemPrompt = customPrompt || this.generateAdvancedSystemPrompt(videoTitle, {
+        tone: 'professional',
+        detailLevel: 'comprehensive',
+        outputFormat: 'markdown'
       });
 
-      const summary = response.choices[0].message.content;
-      
-      // Debug logging for JSON detection
-      const isJson = this.isJsonResponse(summary);
-      const isCustomPrompt = !!customPrompt;
-      
-      // Log detailed information about the response
-      this.logger.debug(`Summary generated for "${videoTitle}": ${summary.length} chars, JSON: ${isJson}, Custom: ${isCustomPrompt}`);
-      
-      if (isJson && !isCustomPrompt) {
-        this.logger.warn('⚠️  UNEXPECTED JSON: AI returned JSON format for regular summary without custom prompt', {
-          videoTitle: videoTitle?.substring(0, 50),
-          summaryPreview: summary.substring(0, 200),
-          promptUsed: this.buildSummaryPrompt('...', videoTitle).substring(0, 100)
-        });
-      } else if (isJson && isCustomPrompt && !customPrompt.toLowerCase().includes('json')) {
-        this.logger.warn('⚠️  POTENTIAL ISSUE: AI returned JSON but custom prompt doesn\'t mention JSON', {
-          videoTitle: videoTitle?.substring(0, 50),
-          promptPreview: customPrompt.substring(0, 100)
-        });
-      } else if (isJson && isCustomPrompt) {
-        this.logger.info('✅ AI returned JSON format for custom prompt (appears intentional)');
-      }
-      
-      // Format the output if it's JSON from a custom prompt
-      const formattedSummary = this.formatSummaryOutput(summary, videoTitle, isCustomPrompt, customPrompt);
-      
-      // Cache the result (if cache is available)
-      if (this.cache) {
-        await this.cache.set(cacheKey, formattedSummary);
-      }
-      
-      this.logger.info(`Generated summary for: ${videoTitle}${customPrompt ? ' (custom prompt)' : ''}`);
-      return formattedSummary;
-      
+      // Call OpenAI with enhanced parameters
+      const summaryResponse = await this.openai.chat.completions.create({
+        model: 'gpt-4-turbo',  // Use latest model
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: optimizedTranscript }
+        ],
+        temperature: 0.3,  // Lower temperature for more consistent output
+        max_tokens: 750,
+        top_p: 0.8,
+        frequency_penalty: 0.2,
+        presence_penalty: 0.1
+      });
+
+      const summary = summaryResponse.choices[0].message.content.trim();
+
+      // Optional: Add quality scoring/validation
+      const qualityScore = this.evaluateSummaryQuality(summary, optimizedTranscript);
+
+      return {
+        summary,
+        qualityScore,
+        videoTitle,
+        videoUrl
+      };
     } catch (error) {
       this.logger.error('Summary generation failed', error);
       throw error;
     }
+  }
+
+  /**
+   * Evaluate summary quality based on multiple metrics
+   * @param {string} summary - Generated summary
+   * @param {string} originalTranscript - Original transcript
+   * @returns {number} Quality score (0-100)
+   */
+  evaluateSummaryQuality(summary, originalTranscript) {
+    let score = 50;  // Base score
+
+    // Length coherence
+    const summaryWords = summary.split(/\s+/).length;
+    const transcriptWords = originalTranscript.split(/\s+/).length;
+    const lengthRatio = summaryWords / transcriptWords;
+    score += lengthRatio > 0.1 && lengthRatio < 0.3 ? 10 : -10;
+
+    // Keyword coverage
+    const keywords = this.extractKeywords(originalTranscript);
+    const keywordsCovered = keywords.filter(kw => summary.toLowerCase().includes(kw.toLowerCase()));
+    score += (keywordsCovered.length / keywords.length) * 20;
+
+    // Structural quality
+    score += this.checkSummaryStructure(summary) ? 10 : -10;
+
+    // Prevent extreme scores
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
+
+  /**
+   * Extract key keywords from transcript
+   * @param {string} transcript - Video transcript
+   * @returns {string[]} Important keywords
+   */
+  extractKeywords(transcript) {
+    // Basic NLP keyword extraction
+    const stopWords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'
+    ]);
+
+    const words = transcript.toLowerCase().match(/\b\w+\b/g) || [];
+    const wordFrequency = {};
+
+    words.forEach(word => {
+      if (!stopWords.has(word)) {
+        wordFrequency[word] = (wordFrequency[word] || 0) + 1;
+      }
+    });
+
+    return Object.entries(wordFrequency)
+      .filter(([_, count]) => count > 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([word]) => word);
+  }
+
+  /**
+   * Check summary structural quality
+   * @param {string} summary - Generated summary
+   * @returns {boolean} Whether summary meets structural criteria
+   */
+  checkSummaryStructure(summary) {
+    const structuralChecks = [
+      summary.includes('\n'),  // Multiple paragraphs
+      summary.length > 100,    // Minimum meaningful length
+      /[.!?]$/.test(summary),  // Proper sentence ending
+      summary.split(/\s+/).some(word => word.length > 5)  // Contains substantive words
+    ];
+
+    return structuralChecks.filter(Boolean).length >= 3;
   }
 
   async generateCustomReport(summariesData, customPrompt) {
@@ -153,7 +305,7 @@ class SummaryService {
 
 Data to process:
 ${summariesData}`;
-
+      
       const response = await this.openai.chat.completions.create({
         model: this.config.model,
         messages: [
