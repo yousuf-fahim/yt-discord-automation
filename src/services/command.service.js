@@ -20,7 +20,7 @@ class CommandService {
   initializeCommands() {
     console.log('🤖 Initializing Discord slash commands...');
     
-    // Register all commands
+    // Register all functional commands
     this.registerHealthCommand();
     this.registerDetailedHealthCommand();
     this.registerTriggerReportCommand();
@@ -56,9 +56,9 @@ class CommandService {
           console.log('🔍 Running health check via command...');
           
           // Get all services
-          const transcriptService = this.serviceManager.getService('transcript');
-          const reportService = this.serviceManager.getService('report');
-          const summaryService = this.serviceManager.getService('summary');
+          const transcriptService = await this.serviceManager.getService('transcript');
+          const reportService = await this.serviceManager.getService('report');
+          const summaryService = await this.serviceManager.getService('summary');
           
           // Check each service
           const healthResults = {
@@ -111,7 +111,7 @@ class CommandService {
           
           for (const serviceType of serviceTypes) {
             try {
-              const service = this.serviceManager.getService(serviceType);
+              const service = await this.serviceManager.getService(serviceType);
               if (service && service.healthCheck) {
                 const result = await service.healthCheck();
                 results.push({
@@ -201,14 +201,14 @@ class CommandService {
           const channelOption = interaction.options.getString('channel') || 'all';
           console.log(`📊 Triggering daily report via command for: ${channelOption}`);
           
-          const reportService = this.serviceManager.getService('report');
+          const reportService = await this.serviceManager.getService('report');
           if (!reportService) {
             throw new Error('Report service not available');
           }
           
           let results = [];
           
-          const discordService = this.serviceManager.getService('discord');
+          const discordService = await this.serviceManager.getService('discord');
           
           if (channelOption === 'all') {
             // Trigger all report channels using the report service
@@ -307,13 +307,13 @@ class CommandService {
           }
           
           // Process the video
-          const discordService = this.serviceManager.getService('discord');
+          const discordService = await this.serviceManager.getService('discord');
           if (!discordService) {
             throw new Error('Discord service not available');
           }
 
           // Get transcript first
-          const transcriptService = this.serviceManager.getService('transcript');
+          const transcriptService = await this.serviceManager.getService('transcript');
           const transcript = await transcriptService.getTranscript(videoId);
           if (!transcript) {
             throw new Error('Could not extract transcript');
@@ -411,7 +411,7 @@ class CommandService {
         try {
           console.log('🔄 Reloading prompts via command...');
           
-          const discordService = this.serviceManager.getService('discord');
+          const discordService = await this.serviceManager.getService('discord');
           if (!discordService) {
             throw new Error('Discord service not available');
           }
@@ -627,7 +627,7 @@ class CommandService {
           const cleanup = interaction.options.getBoolean('cleanup') || false;
           console.log(`💾 Cache stats via command, cleanup: ${cleanup}`);
           
-          const cacheService = this.serviceManager.getService('cache');
+          const cacheService = await this.serviceManager.getService('cache');
           if (!cacheService) {
             throw new Error('Cache service not available');
           }
@@ -678,7 +678,7 @@ class CommandService {
         try {
           console.log('📺 Checking channel status via command...');
           
-          const discordService = this.serviceManager.getService('discord');
+          const discordService = await this.serviceManager.getService('discord');
           if (!discordService) {
             throw new Error('Discord service not available');
           }
@@ -729,7 +729,7 @@ class CommandService {
           const videoId = interaction.options.getString('video-id');
           console.log(`🎬 Testing transcript extraction via command: ${videoId}`);
           
-          const transcriptService = this.serviceManager.getService('transcript');
+          const transcriptService = await this.serviceManager.getService('transcript');
           if (!transcriptService) {
             throw new Error('Transcript service not available');
           }
@@ -777,7 +777,7 @@ class CommandService {
         try {
           console.log('✅ Validating prompts via command...');
           
-          const discordService = this.serviceManager.getService('discord');
+          const discordService = await this.serviceManager.getService('discord');
           if (!discordService) {
             throw new Error('Discord service not available');
           }
@@ -825,7 +825,7 @@ class CommandService {
           const pattern = interaction.options.getString('pattern') || '';
           console.log(`🔍 Debugging cache with pattern: "${pattern}"`);
           
-          const cacheService = this.serviceManager.getService('cache');
+          const cacheService = await this.serviceManager.getService('cache');
           if (!cacheService) {
             throw new Error('Cache service not available');
           }
@@ -884,9 +884,9 @@ class CommandService {
           const showAll = interaction.options.getBoolean('all-dates') || false;
           console.log(`📋 Checking summaries, showAll: ${showAll}`);
           
-          const cacheService = this.serviceManager.getService('cache');
-          const reportService = this.serviceManager.getService('report');
-          const discordService = this.serviceManager.getService('discord');
+          const cacheService = await this.serviceManager.getService('cache');
+          const reportService = await this.serviceManager.getService('report');
+          const discordService = await this.serviceManager.getService('discord');
           
           if (!cacheService || !reportService || !discordService) {
             throw new Error('Cache, Report, or Discord service not available');
@@ -974,7 +974,7 @@ class CommandService {
           
           console.log(`🧹 Clearing cache, type: ${type}, date: ${dateStr || 'N/A'}`);
           
-          const cacheService = this.serviceManager.getService('cache');
+          const cacheService = await this.serviceManager.getService('cache');
           if (!cacheService) {
             throw new Error('Cache service not available');
           }
@@ -1227,7 +1227,7 @@ class CommandService {
           this.serviceManager.config.openai.model = newModel;
           
           // Get summary service and update its config reference
-          const summaryService = this.serviceManager.getService('summary');
+          const summaryService = await this.serviceManager.getService('summary');
           if (summaryService) {
             summaryService.config.model = newModel;
           }
@@ -1291,7 +1291,7 @@ class CommandService {
         
         try {
           const testModel = interaction.options.getString('model');
-          const summaryService = this.serviceManager.getService('summary');
+          const summaryService = await this.serviceManager.getService('summary');
           
           if (!summaryService) {
             throw new Error('Summary service not available');
