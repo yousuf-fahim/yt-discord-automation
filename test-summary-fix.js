@@ -20,7 +20,7 @@ async function testSummaryGeneration() {
     // Initialize services
     await serviceManager.initializeAll();
     
-    const summaryService = serviceManager.getService('summary');
+    const summaryService = await serviceManager.getService('summary');
     
     // Check configuration
     console.log('📋 Current Configuration:');

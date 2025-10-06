@@ -124,12 +124,16 @@ class DiscordService {
     });
 
     this.client.on('interactionCreate', async (interaction) => {
+      console.log(`🔍 Received interaction: ${interaction.type} - Command: ${interaction.commandName}`);
+      
       if (!interaction.isChatInputCommand()) return;
       
       try {
         if (this.commandService) {
+          console.log(`✅ Command service available, handling: ${interaction.commandName}`);
           await this.commandService.handleCommand(interaction);
         } else {
+          console.log('❌ Command service not available');
           await interaction.reply('❌ Command service not available');
         }
       } catch (error) {

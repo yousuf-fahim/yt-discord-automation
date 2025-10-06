@@ -28,10 +28,6 @@ async function main() {
     // Initialize all services
     await serviceManager.initializeAll();
 
-    // Start the bot
-    const discordService = serviceManager.getService('discord');
-    await discordService.start();
-
     serviceManager.logger.info('🤖 Bot started successfully!');
     serviceManager.logger.info('📊 Health check available at /health');
 
