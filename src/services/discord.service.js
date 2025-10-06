@@ -518,14 +518,22 @@ ${transcript}`;
       this.logger.info(`Using custom prompt from ${promptChannel.name}`);
 
       // Generate summary with custom prompt
-      const summary = await this.summary.generateSummary(transcript, videoTitle, originalMessage, customPrompt);
+      const summaryResult = await this.summary.generateSummary(transcript, videoTitle, originalMessage, customPrompt);
+      
+      if (!summaryResult || !summaryResult.summary) {
+        this.logger.error(`Summary generation failed for video ${videoId}`);
+        await channel.send(`❌ Failed to generate summary for video: ${videoTitle}`);
+        return;
+      }
+      
+      const summaryContent = summaryResult.summary;
       
       // Save summary for daily report
       const videoUrl = this.extractVideoUrl(originalMessage);
-      await this.report.saveSummary(videoId, videoTitle, summary, videoUrl);
+      await this.report.saveSummary(videoId, videoTitle, summaryContent, videoUrl);
       
       // Send summary to the channel without extra headers
-      await this.sendLongMessage(channel, summary);
+      await this.sendLongMessage(channel, summaryContent);
       
       this.logger.info(`Summary sent to ${channel.name}`);
     } catch (error) {

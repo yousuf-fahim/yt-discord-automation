@@ -268,17 +268,26 @@ class DatabaseService {
   }
 
   /**
-   * Save a video transcript to database
+   * Save transcript to database
    */
-  async saveTranscript(transcript) {
+  async saveTranscript(videoId, transcript) {
     try {
-      const {
-        videoId,
-        transcript: transcriptText,
-        duration,
-        language = 'en',
-        source = 'youtube-api'
-      } = transcript;
+      let transcriptText, duration, language, source;
+
+      // Handle both string and object formats
+      if (typeof transcript === 'string') {
+        transcriptText = transcript;
+        duration = null;
+        language = 'en';
+        source = 'youtube-api';
+      } else {
+        ({
+          transcriptText = transcript.transcript || transcript.text || transcript,
+          duration = null,
+          language = 'en',
+          source = 'youtube-api'
+        } = transcript);
+      }
 
       const wordCount = transcriptText.split(' ').length;
 

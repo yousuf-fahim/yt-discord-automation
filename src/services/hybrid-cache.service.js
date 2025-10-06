@@ -397,6 +397,91 @@ class HybridCacheService {
     };
   }
 
+  /**
+   * Get today's summaries (compatibility method)
+   */
+  async getTodaysSummaries() {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const summaries = await this.getRecentSummaries(24);
+      
+      // Filter to today only
+      return summaries.filter(summary => {
+        if (!summary.timestamp && !summary.created_at) return false;
+        const summaryDate = new Date(summary.timestamp || summary.created_at).toISOString().split('T')[0];
+        return summaryDate === today;
+      });
+    } catch (error) {
+      this.logger.error('Error getting today\'s summaries:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Debug cache contents (compatibility method)
+   */
+  async debugCache(pattern = null) {
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      
+      const debug = {
+        memoryCache: {
+          size: this.memoryCache.size,
+          keys: Array.from(this.memoryCache.keys()),
+          maxSize: this.config.hotCacheSize
+        },
+        fileCache: {
+          directory: this.cacheDir,
+          files: []
+        },
+        database: {
+          connected: !!this.database,
+          status: this.database ? 'available' : 'not available'
+        },
+        stats: this.getStats()
+      };
+
+      // Get file cache contents
+      try {
+        const files = await fs.readdir(this.cacheDir);
+        
+        for (const file of files) {
+          if (!file.endsWith('.json')) continue;
+          if (pattern && !file.includes(pattern)) continue;
+          
+          try {
+            const filePath = path.join(this.cacheDir, file);
+            const stats = await fs.stat(filePath);
+            const data = await fs.readFile(filePath, 'utf8');
+            const content = JSON.parse(data);
+            
+            debug.fileCache.files.push({
+              name: file,
+              size: stats.size,
+              modified: stats.mtime,
+              preview: typeof content === 'object' ? 
+                Object.keys(content).slice(0, 5) : 
+                String(content).substring(0, 100)
+            });
+          } catch (e) {
+            debug.fileCache.files.push({
+              name: file,
+              error: 'Failed to read: ' + e.message
+            });
+          }
+        }
+      } catch (e) {
+        debug.fileCache.error = e.message;
+      }
+
+      return debug;
+    } catch (error) {
+      this.logger.error('Error debugging cache:', error);
+      return { error: error.message };
+    }
+  }
+
   async healthCheck() {
     const stats = this.getStats();
     const health = {
@@ -418,6 +503,130 @@ class HybridCacheService {
     }
 
     return health;
+  }
+
+  /**
+   * Get today's summaries for command service compatibility
+   */
+  async getTodaysSummaries() {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const todayData = await this.get(`summaries_${today}`, { type: 'summary' });
+      
+      if (todayData && Array.isArray(todayData)) {
+        return todayData;
+      }
+      
+      // Fallback to scanning cache files
+      const recent = await this.getRecentSummaries(24);
+      const today_start = new Date();
+      today_start.setHours(0, 0, 0, 0);
+      
+      return recent.filter(summary => {
+        const summaryDate = new Date(summary.timestamp || summary.created_at);
+        return summaryDate >= today_start;
+      });
+    } catch (error) {
+      this.logger.error('Error getting today\'s summaries:', error);
+      return [];
+    }
+  }
+
+  /**
+   * List all summaries grouped by date
+   */
+  async listSummaries() {
+    try {
+      const summariesByDate = {};
+      
+      // Check database for summaries
+      if (this.databaseService) {
+        try {
+          const dbSummaries = await this.databaseService.getAllSummaries();
+          dbSummaries.forEach(summary => {
+            const date = new Date(summary.created_at).toISOString().split('T')[0];
+            if (!summariesByDate[date]) summariesByDate[date] = [];
+            summariesByDate[date].push(summary);
+          });
+        } catch (error) {
+          this.logger.warn('Could not fetch summaries from database:', error.message);
+        }
+      }
+
+      // Also scan file cache for additional summaries
+      const files = await this.scanFileCacheForRecent(24 * 30); // Last 30 days
+      files.forEach(summary => {
+        const date = new Date(summary.timestamp || summary.created_at).toISOString().split('T')[0];
+        if (!summariesByDate[date]) summariesByDate[date] = [];
+        // Avoid duplicates from database
+        const exists = summariesByDate[date].some(s => s.videoId === summary.videoId);
+        if (!exists) {
+          summariesByDate[date].push(summary);
+        }
+      });
+
+      return summariesByDate;
+    } catch (error) {
+      this.logger.error('Error listing summaries:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Debug cache contents for command service compatibility
+   */
+  async debugCache(pattern = '') {
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      
+      const files = await fs.readdir(this.cacheDir);
+      const results = [];
+      
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        if (pattern && !file.includes(pattern)) continue;
+        
+        try {
+          const filePath = path.join(this.cacheDir, file);
+          const stats = await fs.stat(filePath);
+          const data = await fs.readFile(filePath, 'utf8');
+          const content = JSON.parse(data);
+          
+          results.push({
+            file,
+            size: stats.size,
+            modified: stats.mtime,
+            contentType: typeof content,
+            hasData: !!content,
+            preview: typeof content === 'string' ? 
+              content.substring(0, 100) + '...' : 
+              JSON.stringify(content).substring(0, 100) + '...'
+          });
+        } catch (e) {
+          results.push({
+            file,
+            error: e.message
+          });
+        }
+      }
+      
+      return {
+        pattern: pattern || 'all',
+        totalFiles: files.length,
+        matchingFiles: results.length,
+        memoryCache: {
+          size: this.memoryCache.size,
+          keys: Array.from(this.memoryCache.keys()).slice(0, 10)
+        },
+        files: results.slice(0, 20) // Limit results
+      };
+    } catch (error) {
+      this.logger.error('Error debugging cache:', error);
+      return {
+        error: error.message
+      };
+    }
   }
 
   /**

@@ -1059,6 +1059,47 @@ Generated on ${new Date().toLocaleString()}`;
   }
 
   /**
+   * Send daily report to Discord channel (for command service compatibility)
+   */
+  async sendDailyReport(discordService) {
+    try {
+      // Generate the daily report
+      const reportContent = await this.generateDailyReport();
+      
+      if (!reportContent) {
+        throw new Error('Failed to generate daily report');
+      }
+      
+      // Get the report content (handle both old and new format)
+      const content = reportContent.data || reportContent;
+      
+      // Get the guild
+      const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+      if (!guild) {
+        throw new Error('Guild not found');
+      }
+      
+      // Find the daily report channel
+      const reportChannel = guild.channels.cache.find(
+        ch => ch.name === discordService.config.channels.dailyReport
+      );
+      
+      if (!reportChannel) {
+        throw new Error(`Daily report channel '${discordService.config.channels.dailyReport}' not found`);
+      }
+      
+      // Send the report
+      await discordService.sendLongMessage(reportChannel, content);
+      
+      this.logger.info('Daily report sent to Discord channel');
+      return true;
+    } catch (error) {
+      this.logger.error('Error sending daily report to Discord:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Send daily report to Discord (compatibility method)
    */
   async sendDailyReport(discordService) {

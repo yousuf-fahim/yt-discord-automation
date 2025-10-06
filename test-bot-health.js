@@ -13,7 +13,7 @@ const DiscordService = require('./src/services/discord.service');
 const TranscriptService = require('./src/services/transcript.service');
 const SummaryService = require('./src/services/summary.service');
 const ReportService = require('./src/services/report.service');
-const CacheService = require('./src/services/cache.service');
+const HybridCacheService = require('./src/services/hybrid-cache.service');
 const CommandService = require('./src/services/command.service');
 
 async function runComprehensiveDiagnostics() {
@@ -34,17 +34,17 @@ async function runComprehensiveDiagnostics() {
     console.log('1️⃣ SERVICE INITIALIZATION TEST');
     console.log('-'.repeat(70));
 
-    serviceManager.registerService('cache', CacheService);
+    serviceManager.registerService('cache', HybridCacheService);
     serviceManager.registerService('transcript', TranscriptService, ['cache']);
     serviceManager.registerService('summary', SummaryService, ['cache']);
     serviceManager.registerService('report', ReportService, ['summary', 'cache']);
 
     await serviceManager.initializeAll();
 
-    const cache = serviceManager.getService('cache');
-    const transcript = serviceManager.getService('transcript');
-    const summary = serviceManager.getService('summary');
-    const report = serviceManager.getService('report');
+    const cache = await serviceManager.getService('cache');
+    const transcript = await serviceManager.getService('transcript');
+    const summary = await serviceManager.getService('summary');
+    const report = await serviceManager.getService('report');
 
     console.log('✅ All services initialized successfully\n');
     results.passed.push('Service Initialization');
@@ -54,6 +54,11 @@ async function runComprehensiveDiagnostics() {
     // ==========================================
     console.log('\n2️⃣ CACHE SERVICE TEST');
     console.log('-'.repeat(70));
+
+    // Debug cache object
+    console.log('Cache service type:', typeof cache);
+    console.log('Cache service methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(cache)));
+    console.log('Has set method:', typeof cache.set);
 
     // Test basic cache operations
     await cache.set('test_key', { data: 'test_value' });

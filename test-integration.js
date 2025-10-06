@@ -8,7 +8,7 @@ const { serviceManager } = require('./src/core/service-manager');
 
 // Import services
 const SummaryService = require('./src/services/summary.service');
-const CacheService = require('./src/services/cache.service');
+const HybridCacheService = require('./src/services/hybrid-cache.service');
 
 async function testRealWorkflow() {
   console.log('🔄 INTEGRATION TEST: Real Discord Bot Workflow');
@@ -17,11 +17,11 @@ async function testRealWorkflow() {
 
   try {
     // Initialize services
-    serviceManager.registerService('cache', CacheService);
+    serviceManager.registerService('cache', HybridCacheService);
     serviceManager.registerService('summary', SummaryService, ['cache']);
     await serviceManager.initializeAll();
     
-    const summaryService = serviceManager.getService('summary');
+    const summaryService = await serviceManager.getService('summary');
 
     console.log('📋 Bot Configuration:');
     console.log(`  Model: ${summaryService.config.model}`);
