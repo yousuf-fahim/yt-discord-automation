@@ -12,14 +12,14 @@ const DiscordService = require('./services/discord.service');
 const TranscriptService = require('./services/transcript.service');
 const SummaryService = require('./services/summary.service');
 const ReportService = require('./services/report.service');
-const CacheService = require('./services/cache.service');
+const HybridCacheService = require('./services/hybrid-cache.service');
 const DatabaseService = require('./services/database.service');
 
 async function main() {
   try {
     // Register services with their dependencies
     serviceManager.registerService('database', DatabaseService);
-    serviceManager.registerService('cache', CacheService);
+    serviceManager.registerService('cache', HybridCacheService, ['database']);
     serviceManager.registerService('transcript', TranscriptService, ['cache']);
     serviceManager.registerService('summary', SummaryService, ['cache', 'database']);
     serviceManager.registerService('report', ReportService, ['summary', 'cache', 'database']);

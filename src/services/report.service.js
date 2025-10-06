@@ -592,6 +592,465 @@ class ReportService {
     return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
   }
 
+  /**
+   * Generate weekly report (Monday to Sunday)
+   */
+  async generateWeeklyReport(weekOffset = 0) {
+    try {
+      this.logger.info('Generating weekly report...');
+
+      // Calculate week start (Monday) and end (Sunday)
+      const now = new Date();
+      const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const mondayOffset = currentDay === 0 ? -6 : -(currentDay - 1); // Adjust to get Monday
+      
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() + mondayOffset - (weekOffset * 7));
+      weekStart.setHours(0, 0, 0, 0);
+
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      const weekStartStr = weekStart.toISOString().split('T')[0];
+      const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+      // Get summaries for the week
+      const summaries = await this.getSummariesInDateRange(weekStart, weekEnd);
+      
+      if (summaries.length === 0) {
+        const emptyReport = this.generateEmptyWeeklyReport(weekStartStr, weekEndStr);
+        await this.saveWeeklyReport(weekStartStr, weekEndStr, emptyReport, 0, []);
+        return emptyReport;
+      }
+
+      // Analyze weekly data
+      const weeklyAnalytics = this.analyzeWeeklyData(summaries);
+      const reportContent = await this.generateWeeklyReportContent(summaries, weeklyAnalytics, weekStartStr, weekEndStr);
+
+      // Save to cache and database
+      await this.saveWeeklyReport(weekStartStr, weekEndStr, reportContent, summaries.length, weeklyAnalytics.topChannels);
+
+      this.logger.info(`Weekly report generated and saved: ${weekStartStr} to ${weekEndStr}`);
+      return reportContent;
+
+    } catch (error) {
+      this.logger.error('Error generating weekly report:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate monthly report
+   */
+  async generateMonthlyReport(monthOffset = 0) {
+    try {
+      this.logger.info('Generating monthly report...');
+
+      // Calculate month start and end
+      const now = new Date();
+      const targetMonth = new Date(now.getFullYear(), now.getMonth() - monthOffset, 1);
+      const monthStart = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
+      const monthEnd = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const year = monthStart.getFullYear();
+      const month = monthStart.getMonth() + 1;
+      const monthName = monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+      // Get summaries for the month
+      const summaries = await this.getSummariesInDateRange(monthStart, monthEnd);
+      
+      if (summaries.length === 0) {
+        const emptyReport = this.generateEmptyMonthlyReport(monthName);
+        await this.saveMonthlyReport(year, month, monthName, emptyReport, 0, [], 0, {});
+        return emptyReport;
+      }
+
+      // Analyze monthly data
+      const monthlyAnalytics = this.analyzeMonthlyData(summaries, monthStart, monthEnd);
+      const reportContent = await this.generateMonthlyReportContent(summaries, monthlyAnalytics, monthName);
+
+      // Save to cache and database
+      await this.saveMonthlyReport(
+        year, 
+        month, 
+        monthName, 
+        reportContent, 
+        summaries.length, 
+        monthlyAnalytics.topChannels,
+        monthlyAnalytics.dailyAverage,
+        monthlyAnalytics.weeklyBreakdown
+      );
+
+      this.logger.info(`Monthly report generated and saved: ${monthName}`);
+      return reportContent;
+
+    } catch (error) {
+      this.logger.error('Error generating monthly report:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get summaries within a date range
+   */
+  async getSummariesInDateRange(startDate, endDate) {
+    try {
+      // Try database first
+      if (this.database) {
+        const dbSummaries = await this.database.getAllQuery(`
+          SELECT * FROM summaries 
+          WHERE created_at >= ? AND created_at <= ?
+          ORDER BY created_at DESC
+        `, [startDate.toISOString(), endDate.toISOString()]);
+        
+        if (dbSummaries && dbSummaries.length > 0) {
+          return dbSummaries;
+        }
+      }
+
+      // Fallback to cache scanning
+      return await this.scanCacheForDateRange(startDate, endDate);
+    } catch (error) {
+      this.logger.error('Error getting summaries in date range:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Analyze weekly data for insights
+   */
+  analyzeWeeklyData(summaries) {
+    const channelCount = {};
+    const dailyCount = {};
+    const topics = [];
+
+    summaries.forEach(summary => {
+      // Count by channel
+      const channel = summary.channel_name || 'Unknown';
+      channelCount[channel] = (channelCount[channel] || 0) + 1;
+
+      // Count by day
+      const day = new Date(summary.created_at || summary.timestamp).toLocaleDateString('en-US', { weekday: 'long' });
+      dailyCount[day] = (dailyCount[day] || 0) + 1;
+
+      // Extract topics (basic implementation)
+      if (summary.title) {
+        topics.push(...summary.title.toLowerCase().split(' ').filter(word => word.length > 4));
+      }
+    });
+
+    const topChannels = Object.entries(channelCount)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([channel, count]) => ({ channel, count }));
+
+    return {
+      topChannels,
+      dailyBreakdown: dailyCount,
+      totalVideos: summaries.length,
+      avgPerDay: Math.round(summaries.length / 7 * 10) / 10,
+      topTopics: [...new Set(topics)].slice(0, 10)
+    };
+  }
+
+  /**
+   * Analyze monthly data for insights
+   */
+  analyzeMonthlyData(summaries, monthStart, monthEnd) {
+    const weeklyData = this.analyzeWeeklyData(summaries);
+    const daysInMonth = new Date(monthEnd.getFullYear(), monthEnd.getMonth() + 1, 0).getDate();
+    
+    // Weekly breakdown
+    const weeklyBreakdown = {};
+    const weeks = Math.ceil(daysInMonth / 7);
+    
+    for (let week = 1; week <= weeks; week++) {
+      const weekStartDay = (week - 1) * 7 + 1;
+      const weekEndDay = Math.min(week * 7, daysInMonth);
+      
+      const weekSummaries = summaries.filter(s => {
+        const day = new Date(s.created_at || s.timestamp).getDate();
+        return day >= weekStartDay && day <= weekEndDay;
+      });
+      
+      weeklyBreakdown[`Week ${week}`] = {
+        videos: weekSummaries.length,
+        days: `${weekStartDay}-${weekEndDay}`
+      };
+    }
+
+    return {
+      ...weeklyData,
+      dailyAverage: Math.round(summaries.length / daysInMonth * 10) / 10,
+      weeklyBreakdown,
+      daysInMonth
+    };
+  }
+
+  /**
+   * Generate weekly report content
+   */
+  async generateWeeklyReportContent(summaries, analytics, weekStart, weekEnd) {
+    const prompt = await this.loadPrompt('weekly-report-prompt');
+    
+    const reportData = {
+      weekStart,
+      weekEnd,
+      summaries,
+      analytics,
+      totalVideos: summaries.length,
+      topChannels: analytics.topChannels,
+      dailyBreakdown: analytics.dailyBreakdown
+    };
+
+    // Use AI to generate the report if available, otherwise use template
+    if (this.summary && prompt) {
+      try {
+        const aiReport = await this.summary.generateSummary(
+          JSON.stringify(reportData, null, 2),
+          `Weekly Report: ${weekStart} to ${weekEnd}`,
+          null,
+          prompt
+        );
+        return aiReport.summary || this.generateWeeklyTemplate(reportData);
+      } catch (error) {
+        this.logger.warn('AI weekly report generation failed, using template:', error.message);
+        return this.generateWeeklyTemplate(reportData);
+      }
+    }
+
+    return this.generateWeeklyTemplate(reportData);
+  }
+
+  /**
+   * Generate monthly report content
+   */
+  async generateMonthlyReportContent(summaries, analytics, monthName) {
+    const prompt = await this.loadPrompt('monthly-report-prompt');
+    
+    const reportData = {
+      monthName,
+      summaries,
+      analytics,
+      totalVideos: summaries.length,
+      dailyAverage: analytics.dailyAverage,
+      weeklyBreakdown: analytics.weeklyBreakdown,
+      topChannels: analytics.topChannels
+    };
+
+    // Use AI to generate the report if available, otherwise use template
+    if (this.summary && prompt) {
+      try {
+        const aiReport = await this.summary.generateSummary(
+          JSON.stringify(reportData, null, 2),
+          `Monthly Report: ${monthName}`,
+          null,
+          prompt
+        );
+        return aiReport.summary || this.generateMonthlyTemplate(reportData);
+      } catch (error) {
+        this.logger.warn('AI monthly report generation failed, using template:', error.message);
+        return this.generateMonthlyTemplate(reportData);
+      }
+    }
+
+    return this.generateMonthlyTemplate(reportData);
+  }
+
+  /**
+   * Save weekly report
+   */
+  async saveWeeklyReport(weekStart, weekEnd, content, summaryCount, topChannels) {
+    const reportKey = `weekly_report_${weekStart}`;
+    
+    const report = {
+      weekStart,
+      weekEnd,
+      content,
+      summaryCount,
+      totalVideos: summaryCount,
+      topChannels,
+      timestamp: Date.now(),
+      type: 'weekly'
+    };
+
+    // Save to cache
+    await this.cache.set(reportKey, report);
+
+    // Save to database
+    if (this.database) {
+      await this.database.saveWeeklyReport({
+        weekStart,
+        weekEnd,
+        content,
+        summaryCount,
+        totalVideos: summaryCount,
+        topChannels
+      });
+    }
+
+    this.logger.info(`Weekly report saved to cache and database: ${weekStart}`);
+    return true;
+  }
+
+  /**
+   * Save monthly report
+   */
+  async saveMonthlyReport(year, month, monthName, content, summaryCount, topChannels, dailyAverage, weeklyBreakdown) {
+    const reportKey = `monthly_report_${year}-${month.toString().padStart(2, '0')}`;
+    
+    const report = {
+      year,
+      month,
+      monthName,
+      content,
+      summaryCount,
+      topChannels,
+      dailyAverage,
+      weeklyBreakdown,
+      timestamp: Date.now(),
+      type: 'monthly'
+    };
+
+    // Save to cache
+    await this.cache.set(reportKey, report);
+
+    // Save to database
+    if (this.database) {
+      await this.database.saveMonthlyReport({
+        year,
+        month,
+        monthName,
+        content,
+        summaryCount,
+        totalVideos: summaryCount,
+        topChannels,
+        dailyAverage,
+        weeklyBreakdown
+      });
+    }
+
+    this.logger.info(`Monthly report saved to cache and database: ${monthName}`);
+    return true;
+  }
+
+  /**
+   * Template generators for fallback
+   */
+  generateWeeklyTemplate(data) {
+    return `# Weekly YouTube Summary Report
+**Week: ${data.weekStart} to ${data.weekEnd}**
+
+## 📊 Overview
+- **Total Videos**: ${data.totalVideos}
+- **Average per Day**: ${data.analytics.avgPerDay}
+
+## 🏆 Top Channels
+${data.topChannels.map((ch, i) => `${i + 1}. **${ch.channel}** (${ch.count} videos)`).join('\n')}
+
+## 📅 Daily Breakdown
+${Object.entries(data.dailyBreakdown).map(([day, count]) => `- **${day}**: ${count} videos`).join('\n')}
+
+Generated on ${new Date().toLocaleString()}`;
+  }
+
+  generateMonthlyTemplate(data) {
+    return `# Monthly YouTube Summary Report
+**Month: ${data.monthName}**
+
+## 📊 Overview
+- **Total Videos**: ${data.totalVideos}
+- **Daily Average**: ${data.dailyAverage}
+- **Days in Month**: ${data.analytics.daysInMonth}
+
+## 🏆 Top Channels
+${data.topChannels.map((ch, i) => `${i + 1}. **${ch.channel}** (${ch.count} videos)`).join('\n')}
+
+## 📈 Weekly Breakdown
+${Object.entries(data.weeklyBreakdown).map(([week, info]) => `- **${week}**: ${info.videos} videos (Days ${info.days})`).join('\n')}
+
+Generated on ${new Date().toLocaleString()}`;
+  }
+
+  generateEmptyWeeklyReport(weekStart, weekEnd) {
+    return `# Weekly YouTube Summary Report
+**Week: ${weekStart} to ${weekEnd}**
+
+## 📊 Overview
+No videos were processed during this week.
+
+**Stay tuned for next week's content!**
+
+Generated on ${new Date().toLocaleString()}`;
+  }
+
+  generateEmptyMonthlyReport(monthName) {
+    return `# Monthly YouTube Summary Report
+**Month: ${monthName}**
+
+## 📊 Overview
+No videos were processed during this month.
+
+**Stay tuned for upcoming content!**
+
+Generated on ${new Date().toLocaleString()}`;
+  }
+
+  /**
+   * Load prompt from prompts directory
+   */
+  async loadPrompt(promptName) {
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      
+      const promptPath = path.join(process.cwd(), 'prompts', `${promptName}.md`);
+      const promptContent = await fs.readFile(promptPath, 'utf8');
+      
+      return promptContent;
+    } catch (error) {
+      this.logger.warn(`Could not load prompt ${promptName}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Scan cache for summaries in date range (fallback method)
+   */
+  async scanCacheForDateRange(startDate, endDate) {
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      
+      const cacheDir = path.join(process.cwd(), 'cache');
+      const files = await fs.readdir(cacheDir);
+      const summaries = [];
+
+      for (const file of files) {
+        if (!file.includes('summary_') || !file.endsWith('.json')) continue;
+
+        try {
+          const filePath = path.join(cacheDir, file);
+          const stats = await fs.stat(filePath);
+          
+          if (stats.mtime >= startDate && stats.mtime <= endDate) {
+            const data = await fs.readFile(filePath, 'utf8');
+            const summary = JSON.parse(data);
+            summaries.push(summary);
+          }
+        } catch (e) {
+          // Skip corrupted files
+        }
+      }
+
+      return summaries;
+    } catch (error) {
+      this.logger.error('Error scanning cache for date range:', error);
+      return [];
+    }
+  }
+
   async healthCheck() {
     return {
       status: 'ok',
