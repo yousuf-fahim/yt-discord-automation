@@ -26,6 +26,7 @@
     "node-cron": "^3.0.2",
     "node-fetch": "^2.7.0",
     "openai": "^4.10.0",
+    "sqlite3": "^5.1.7",
     "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {

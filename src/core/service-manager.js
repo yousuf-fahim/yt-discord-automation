@@ -140,14 +140,14 @@ class ServiceManager extends EventEmitter {
   /**
    * Get a service instance
    */
-  getService(name) {
+  async getService(name) {
     const service = this.services.get(name);
     if (!service) {
       throw new Error(`Service '${name}' not found`);
     }
 
     if (!service.initialized) {
-      this.initializeService(name);
+      await this.initializeService(name);
     }
 
     return service.instance;
@@ -156,7 +156,7 @@ class ServiceManager extends EventEmitter {
   /**
    * Initialize a specific service
    */
-  initializeService(name) {
+  async initializeService(name) {
     const service = this.services.get(name);
     if (!service || service.initialized) return;
 
@@ -165,11 +165,17 @@ class ServiceManager extends EventEmitter {
     // Initialize dependencies first
     const dependencies = {};
     for (const depName of service.dependencies) {
-      dependencies[depName] = this.getService(depName);
+      dependencies[depName] = await this.getService(depName);
     }
 
     // Create service instance
     service.instance = new service.class(this, dependencies);
+    
+    // Call the service's initialize method if it exists
+    if (typeof service.instance.initialize === 'function') {
+      await service.instance.initialize();
+    }
+    
     service.initialized = true;
 
     this.logger.info(`Service initialized: ${name}`);
@@ -192,7 +198,7 @@ class ServiceManager extends EventEmitter {
     const sortedServices = this.topologicalSort(serviceNames);
 
     for (const serviceName of sortedServices) {
-      this.initializeService(serviceName);
+      await this.initializeService(serviceName);
     }
 
     this.isInitialized = true;

@@ -7,12 +7,13 @@ class ReportService {
     this.serviceManager = serviceManager;
     this.summary = dependencies.summary;
     this.cache = dependencies.cache;
+    this.database = dependencies.database;
     this.logger = serviceManager.logger;
     this.config = serviceManager.config;
   }
 
   async initialize() {
-    this.logger.info('Report service initialized');
+    this.logger.info('Report service initialized with database support');
   }
 
   async generateDailyReport() {
@@ -21,6 +22,8 @@ class ReportService {
       
       // Get summaries from the last 24 hours
       const summaries = await this.getRecentSummaries();
+      
+      const today = new Date().toISOString().split('T')[0];
       
       if (summaries.length === 0) {
         const emptyReportText = this.generateEmptyReport().data;
@@ -32,9 +35,18 @@ class ReportService {
           summaryCount: 0
         };
         
-        // Cache the empty report too
-        const reportKey = `daily_report_${new Date().toISOString().split('T')[0]}`;
+        // Cache the empty report
+        const reportKey = `daily_report_${today}`;
         await this.cache.set(reportKey, emptyReport);
+        
+        // Save to database
+        if (this.database) {
+          await this.database.saveDailyReport({
+            date: today,
+            content: emptyReportText,
+            summaryCount: 0
+          });
+        }
         
         return emptyReport;
       }
@@ -50,13 +62,22 @@ class ReportService {
       };
       
       // Cache the report
-      const reportKey = `daily_report_${new Date().toISOString().split('T')[0]}`;
+      const reportKey = `daily_report_${today}`;
       const cacheSuccess = await this.cache.set(reportKey, reportData);
       
+      // Save to database
+      if (this.database) {
+        await this.database.saveDailyReport({
+          date: today,
+          content: report,
+          summaryCount: summaries.length
+        });
+      }
+      
       if (cacheSuccess) {
-        this.logger.info(`Daily report generated and cached with ${summaries.length} videos`);
+        this.logger.info(`Daily report generated, cached, and saved to database with ${summaries.length} videos`);
       } else {
-        this.logger.warn(`Daily report generated but caching failed`);
+        this.logger.warn(`Daily report generated and saved to database, but caching failed`);
       }
       
       return reportData;
@@ -150,15 +171,33 @@ class ReportService {
       console.log(`📅 Yesterday: ${yesterday.toISOString().split('T')[0]}`);
       console.log(`📅 Current time: ${now.toISOString()}`);
       
-      // Get all cached summaries from today and yesterday
+      // Try to get from cache first (faster)
       const todaySummaries = await this.getSummariesByDate(today);
       const yesterdaySummaries = await this.getSummariesByDate(yesterday);
       
-      console.log(`📊 Today's summaries: ${todaySummaries.length}`);
-      console.log(`📊 Yesterday's summaries: ${yesterdaySummaries.length}`);
+      console.log(`📊 Today's summaries (cache): ${todaySummaries.length}`);
+      console.log(`📊 Yesterday's summaries (cache): ${yesterdaySummaries.length}`);
+      
+      let allSummaries = [...todaySummaries, ...yesterdaySummaries];
+      
+      // If cache is empty or insufficient, fallback to database
+      if (allSummaries.length === 0 && this.database) {
+        console.log('📋 Cache empty, checking database...');
+        const dbSummaries = await this.database.getRecentSummaries(24);
+        
+        // Convert database format to cache format
+        allSummaries = dbSummaries.map(row => ({
+          videoId: row.video_id,
+          videoTitle: row.title,
+          summaryContent: row.content,
+          videoUrl: row.url,
+          timestamp: row.created_at
+        }));
+        
+        console.log(`📊 Database summaries: ${allSummaries.length}`);
+      }
       
       // Combine and filter to last 24 hours
-      const allSummaries = [...todaySummaries, ...yesterdaySummaries];
       const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
       
       console.log(`🕐 24 hours ago: ${last24Hours.toISOString()}`);
@@ -249,13 +288,26 @@ class ReportService {
   async saveSummary(summary) {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const cacheService = this.serviceManager.getService('cache');
+      const cacheService = await this.serviceManager.getService('cache');
       
       if (!cacheService) {
         this.logger.error('Cache service not available');
         return false;
       }
       
+      // Save to database first (persistent storage)
+      if (this.database) {
+        await this.database.saveSummary({
+          videoId: summary.videoId,
+          videoTitle: summary.videoTitle,
+          summaryContent: summary.summaryContent,
+          videoUrl: summary.videoUrl,
+          promptType: summary.promptType || 'default'
+        });
+        this.logger.info(`Summary saved to database: ${summary.videoId}`);
+      }
+      
+      // Then save to cache (fast access)
       // Retrieve existing summaries for today
       const existingCache = await cacheService.get(`summaries_${today}`);
       
@@ -290,10 +342,10 @@ class ReportService {
       
       await cacheService.set(`summaries_${today}`, summaryData);
       
-      this.logger.info(`Saved summary for video ${summary.videoId} to daily cache`);
+      this.logger.info(`Summary saved to cache and database: ${summary.videoId}`);
       return true;
     } catch (error) {
-      this.logger.error('Error saving summary to cache', error);
+      this.logger.error('Error saving summary:', error);
       return false;
     }
   }
