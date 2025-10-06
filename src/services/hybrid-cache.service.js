@@ -419,6 +419,228 @@ class HybridCacheService {
 
     return health;
   }
+
+  /**
+   * Get today's summaries (compatibility method)
+   */
+  async getTodaysSummaries() {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const summaries = [];
+      
+      // Try to get from database first
+      if (this.database) {
+        const dbSummaries = await this.database.getAllQuery(`
+          SELECT * FROM summaries 
+          WHERE DATE(created_at) = ?
+          ORDER BY created_at DESC
+        `, [today]);
+        
+        if (dbSummaries && dbSummaries.length > 0) {
+          return dbSummaries;
+        }
+      }
+
+      // Fallback to cache scanning
+      return await this.scanFileCacheForToday();
+    } catch (error) {
+      this.logger.error('Error getting today\'s summaries:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Debug cache contents (compatibility method)
+   */
+  async debugCache(pattern = null) {
+    try {
+      const debug = {
+        memoryCache: {
+          size: this.memoryCache.size,
+          items: Array.from(this.memoryCache.keys()).filter(k => 
+            !pattern || k.includes(pattern)
+          )
+        },
+        fileCache: await this.debugFileCache(pattern),
+        database: this.database ? 'available' : 'not available',
+        stats: this.getStats()
+      };
+
+      return debug;
+    } catch (error) {
+      this.logger.error('Error debugging cache:', error);
+      return { error: error.message };
+    }
+  }
+
+  /**
+   * Get cache statistics (enhanced version)
+   */
+  async getStats() {
+    try {
+      const files = await fs.readdir(this.cacheDir);
+      let totalSize = 0;
+      let fileCount = 0;
+      
+      const categoryCounts = {
+        summaries: 0,
+        transcripts: 0,
+        reports: 0,
+        other: 0
+      };
+
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        
+        try {
+          const filePath = path.join(this.cacheDir, file);
+          const stats = await fs.stat(filePath);
+          totalSize += stats.size;
+          fileCount++;
+
+          // Categorize files
+          if (file.includes('summary_')) {
+            categoryCounts.summaries++;
+          } else if (file.includes('transcript')) {
+            categoryCounts.transcripts++;
+          } else if (file.includes('report_')) {
+            categoryCounts.reports++;
+          } else {
+            categoryCounts.other++;
+          }
+        } catch (e) {
+          // Skip files we can't read
+        }
+      }
+
+      return {
+        ...this.cacheStats,
+        memorySize: this.memoryCache.size,
+        hitRate: this.cacheStats.hits / (this.cacheStats.hits + this.cacheStats.misses) || 0,
+        totalFiles: fileCount,
+        totalSize: this.formatBytes(totalSize),
+        summaries: categoryCounts.summaries,
+        transcripts: categoryCounts.transcripts,
+        reports: categoryCounts.reports,
+        other: categoryCounts.other
+      };
+    } catch (error) {
+      this.logger.error('Error getting cache stats:', error);
+      return this.cacheStats;
+    }
+  }
+
+  /**
+   * Cleanup old cache files
+   */
+  async cleanup() {
+    try {
+      const files = await fs.readdir(this.cacheDir);
+      const now = Date.now();
+      let removed = 0;
+      let spaceSaved = 0;
+
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+
+        try {
+          const filePath = path.join(this.cacheDir, file);
+          const stats = await fs.stat(filePath);
+          const age = now - stats.mtime.getTime();
+
+          // Remove files older than configured TTL (default 7 days)
+          const maxAge = 7 * 24 * 60 * 60 * 1000;
+          if (age > maxAge) {
+            spaceSaved += stats.size;
+            await fs.unlink(filePath);
+            removed++;
+          }
+        } catch (e) {
+          // Skip files we can't process
+        }
+      }
+
+      return {
+        removed,
+        spaceSaved: this.formatBytes(spaceSaved)
+      };
+    } catch (error) {
+      this.logger.error('Error during cleanup:', error);
+      return { removed: 0, spaceSaved: '0 B' };
+    }
+  }
+
+  /**
+   * Helper methods
+   */
+  async scanFileCacheForToday() {
+    try {
+      const files = await fs.readdir(this.cacheDir);
+      const summaries = [];
+      const today = new Date().toISOString().split('T')[0];
+
+      for (const file of files) {
+        if (!file.includes('summary_') || !file.endsWith('.json')) continue;
+
+        try {
+          const filePath = path.join(this.cacheDir, file);
+          const stats = await fs.stat(filePath);
+          const fileDate = stats.mtime.toISOString().split('T')[0];
+
+          if (fileDate === today) {
+            const data = await fs.readFile(filePath, 'utf8');
+            summaries.push(JSON.parse(data));
+          }
+        } catch (e) {
+          // Skip corrupted files
+        }
+      }
+
+      return summaries;
+    } catch (error) {
+      this.logger.error('Error scanning cache for today:', error);
+      return [];
+    }
+  }
+
+  async debugFileCache(pattern) {
+    try {
+      const files = await fs.readdir(this.cacheDir);
+      const matching = files.filter(f => 
+        f.endsWith('.json') && (!pattern || f.includes(pattern))
+      );
+
+      const details = [];
+      for (const file of matching.slice(0, 10)) { // Limit to 10 for readability
+        try {
+          const filePath = path.join(this.cacheDir, file);
+          const stats = await fs.stat(filePath);
+          details.push({
+            file,
+            size: this.formatBytes(stats.size),
+            modified: stats.mtime.toISOString()
+          });
+        } catch (e) {
+          details.push({ file, error: 'Cannot read' });
+        }
+      }
+
+      return {
+        totalMatching: matching.length,
+        details
+      };
+    } catch (error) {
+      return { error: error.message };
+    }
+  }
+
+  formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
 }
 
 module.exports = HybridCacheService;

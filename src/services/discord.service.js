@@ -1466,6 +1466,57 @@ ${transcript}`;
     
     return results;
   }
+
+  /**
+   * Get channel monitoring status (compatibility method)
+   */
+  async getChannelStatus() {
+    try {
+      const guild = this.client.guilds.cache.get(this.config.guildId);
+      if (!guild) {
+        throw new Error('Guild not found');
+      }
+
+      const channels = [];
+      
+      // Check summary channels
+      const summaryChannels = guild.channels.cache.filter(
+        ch => ch.name && ch.name.includes('summaries')
+      );
+      
+      for (const [id, channel] of summaryChannels) {
+        channels.push({
+          name: channel.name,
+          type: 'summary',
+          active: true,
+          lastActivity: 'Active'
+        });
+      }
+
+      // Check monitoring channels (allowed patterns)
+      for (const pattern of this.config.allowedChannelPatterns) {
+        const matchingChannels = guild.channels.cache.filter(
+          ch => ch.name && ch.name.includes(pattern)
+        );
+        
+        for (const [id, channel] of matchingChannels) {
+          if (!channels.find(c => c.name === channel.name)) {
+            channels.push({
+              name: channel.name,
+              type: 'monitoring',
+              active: true,
+              lastActivity: 'Monitored'
+            });
+          }
+        }
+      }
+
+      return channels;
+    } catch (error) {
+      this.logger.error('Error getting channel status:', error);
+      return [];
+    }
+  }
 }
 
 module.exports = DiscordService;
