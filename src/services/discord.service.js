@@ -530,7 +530,12 @@ ${transcript}`;
       
       // Save summary for daily report
       const videoUrl = this.extractVideoUrl(originalMessage);
-      await this.report.saveSummary(videoId, videoTitle, summaryContent, videoUrl);
+      await this.report.saveSummary({
+        videoId,
+        videoTitle,
+        summaryContent,
+        videoUrl
+      });
       
       // Send summary to the channel without extra headers
       await this.sendLongMessage(channel, summaryContent);

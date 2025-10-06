@@ -322,6 +322,22 @@ class DatabaseService {
   }
 
   /**
+   * Get summary by video ID
+   */
+  async getSummary(videoId) {
+    try {
+      const row = await this.getQuery(`
+        SELECT * FROM summaries WHERE video_id = ?
+      `, [videoId]);
+
+      return row || null;
+    } catch (error) {
+      this.logger.error('Error getting summary:', error);
+      return null;
+    }
+  }
+
+  /**
    * Search transcripts by content
    */
   async searchTranscripts(query, limit = 10) {
