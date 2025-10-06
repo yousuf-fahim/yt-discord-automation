@@ -72,6 +72,18 @@ class DatabaseService {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
 
+      // Video transcripts table - NEW!
+      `CREATE TABLE IF NOT EXISTS transcripts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        video_id TEXT NOT NULL UNIQUE,
+        transcript_text TEXT NOT NULL,
+        word_count INTEGER,
+        duration INTEGER,
+        language TEXT DEFAULT 'en',
+        source TEXT DEFAULT 'youtube-api',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+
       // Daily reports table
       `CREATE TABLE IF NOT EXISTS daily_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,6 +138,8 @@ class DatabaseService {
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_summaries_created_at ON summaries(created_at)',
       'CREATE INDEX IF NOT EXISTS idx_summaries_video_id ON summaries(video_id)',
+      'CREATE INDEX IF NOT EXISTS idx_transcripts_video_id ON transcripts(video_id)',
+      'CREATE INDEX IF NOT EXISTS idx_transcripts_created_at ON transcripts(created_at)',
       'CREATE INDEX IF NOT EXISTS idx_daily_reports_date ON daily_reports(date)',
       'CREATE INDEX IF NOT EXISTS idx_analytics_date ON analytics(date)',
       'CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level, created_at)'
@@ -209,6 +223,73 @@ class DatabaseService {
     } catch (error) {
       this.logger.error('Error saving summary to database:', error);
       return false;
+    }
+  }
+
+  /**
+   * Save a video transcript to database
+   */
+  async saveTranscript(transcript) {
+    try {
+      const {
+        videoId,
+        transcript: transcriptText,
+        duration,
+        language = 'en',
+        source = 'youtube-api'
+      } = transcript;
+
+      const wordCount = transcriptText.split(' ').length;
+
+      await this.runQuery(`
+        INSERT OR REPLACE INTO transcripts 
+        (video_id, transcript_text, word_count, duration, language, source)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, [videoId, transcriptText, wordCount, duration, language, source]);
+
+      this.logger.info(`Transcript saved to database: ${videoId} (${wordCount} words)`);
+      return true;
+    } catch (error) {
+      this.logger.error('Error saving transcript to database:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get transcript by video ID
+   */
+  async getTranscript(videoId) {
+    try {
+      const row = await this.getQuery(`
+        SELECT * FROM transcripts WHERE video_id = ?
+      `, [videoId]);
+
+      return row || null;
+    } catch (error) {
+      this.logger.error('Error getting transcript:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Search transcripts by content
+   */
+  async searchTranscripts(query, limit = 10) {
+    try {
+      const rows = await this.getAllQuery(`
+        SELECT t.video_id, t.transcript_text, t.word_count, t.created_at,
+               s.title, s.url
+        FROM transcripts t
+        LEFT JOIN summaries s ON t.video_id = s.video_id
+        WHERE t.transcript_text LIKE ? 
+        ORDER BY t.created_at DESC
+        LIMIT ?
+      `, [`%${query}%`, limit]);
+
+      return rows;
+    } catch (error) {
+      this.logger.error('Error searching transcripts:', error);
+      return [];
     }
   }
 
@@ -394,10 +475,12 @@ class DatabaseService {
       const summariesCount = await this.getQuery('SELECT COUNT(*) as count FROM summaries');
       const reportsCount = await this.getQuery('SELECT COUNT(*) as count FROM daily_reports');
       const metadataCount = await this.getQuery('SELECT COUNT(*) as count FROM video_metadata');
+      const transcriptsCount = await this.getQuery('SELECT COUNT(*) as count FROM transcripts');
 
       stats.summaries = summariesCount.count;
       stats.reports = reportsCount.count;
       stats.metadata = metadataCount.count;
+      stats.transcripts = transcriptsCount.count;
 
       // Get database file size
       const dbStats = await fs.stat(this.dbPath);
