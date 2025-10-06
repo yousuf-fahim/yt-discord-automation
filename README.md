@@ -1,142 +1,145 @@
-# YouTube to Discord AI Automation Bot
+# YouTube to Discord AI Automation Bot 🚀
 
-A Node.js bot that automatically extracts transcripts from YouTube videos posted in Discord, generates AI summaries using custom prompts, and creates daily reports. Includes comprehensive slash commands for management and debugging.
+A powerful Node.js bot that automatically extracts transcripts from YouTube videos posted in Discord, generates AI summaries using custom prompts, and creates comprehensive reports. Features a hybrid cache+database architecture for optimal performance and reliability.
 
-## Features
+## ✨ Key Features
 
+### 🤖 **AI-Powered Processing**
 - 🔍 Monitors Discord channels for YouTube links
 - 📝 Multi-strategy transcript extraction with VPS fallback support
-- 🤖 **GPT-5 & GPT-4 Support** with intelligent context window optimization (110K tokens for GPT-5)
+- � **GPT-5 & GPT-4 Support** with intelligent context window optimization (110K tokens for GPT-5)
 - 🎯 Generates AI summaries using OpenAI with customizable prompts
 - 📊 Creates daily/weekly/monthly reports of all summarized videos
-- ⚙️ Modern ServiceManager architecture with dependency injection
-- 🏗️ Configurable via environment variables and pinned Discord messages
-- 🤖 **17 Comprehensive Slash Commands** for management, debugging, and monitoring
-- 💾 Intelligent cache management with backward compatibility
-- 📎 Smart Discord message handling with auto file attachments for long responses
+
+### 🗄️ **Enhanced Database Architecture** 
+- 💾 **Hybrid Cache+Database System** - SQLite for persistence, cache for speed
+- 🔍 **Advanced Search** - Find summaries by content or title
+- 📈 **Analytics Tracking** - Monitor bot performance and usage trends
+- 💿 **Automated Backups** - Built-in database backup capabilities
+- 🔄 **Data Consistency** - Seamless fallback between cache and database
+
+### 🎮 **Comprehensive Discord Integration**
+- 🤖 **20+ Slash Commands** for management, debugging, and monitoring
+-  Smart message handling with auto file attachments for long responses
+- ⚙️ Configurable via environment variables and pinned Discord messages
 - 🚨 Robust error handling and health monitoring (100% operational status)
 
-## Architecture
-
-### Modern Architecture (src/)
+### 🏗️ **Modern Architecture**
 - **ServiceManager**: Dependency injection and service lifecycle management
-- **Discord Service**: Bot interactions, message handling, and auto file attachments (Discord.js v14)
-- **Transcript Service**: Multi-strategy extraction (VPS → Local → RapidAPI fallback)
-- **Summary Service**: OpenAI integration with GPT-5/GPT-4 support and context optimization
-- **Report Service**: Daily/weekly/monthly report generation and scheduling
-- **Cache Service**: Intelligent caching with format versioning and backward compatibility
-- **Command Service**: 17 slash commands for comprehensive bot management
+- **Database Service**: SQLite with optimized schema and indexing
+- **Cache Service**: Intelligent caching with format versioning
+- **Report Service**: Enhanced with database persistence
+- **Summary Service**: OpenAI integration with context optimization
+- **Transcript Service**: Multi-strategy extraction with reliability
+- **Discord Service**: Bot interactions with Discord.js v14
 
-### Entry Points
-- **Development**: `npm run dev` (with nodemon auto-restart)
-- **Production**: `npm start`
-- **Heroku**: Automatic via Procfile
+## 🗄️ Database Schema
 
-## Setup
+```sql
+-- Persistent storage with optimized indexes
+summaries        → video_id, title, content, url, prompt_type, timestamps
+daily_reports    → date, content, summary_count, word_count  
+video_metadata   → duration, channel, published_at, transcript_length
+analytics        → daily stats for performance tracking
+system_logs      → structured logging for debugging
+```
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 16.9.0 or higher
-- Discord Bot Token with Message Content intent enabled
-- OpenAI API Key
-- YouTube API Key (optional, for video title fetching)
-- Python 3 with `youtube-transcript-api` package (`pip install youtube-transcript-api`)
+## 📋 Setup Instructions
 
-### Local Development
-
+### 1. Environment Configuration
 ```bash
-# Install dependencies
+# Clone repository and install dependencies
+git clone <repository-url>
+cd yt-discord-automation
 npm install
 
-# Install Python package for transcript extraction
-pip install youtube-transcript-api
-
-# Start development server (with auto-restart)
-npm run dev
-
-# Or start production mode
-npm start
+# Copy and configure environment variables
+cp .env.example .env
 ```
 
-### Cache Management
+### 2. Required Environment Variables
+```bash
+# Core APIs (Required)
+DISCORD_BOT_TOKEN=your_discord_bot_token
+DISCORD_GUILD_ID=your_guild_id
+OPENAI_API_KEY=your_openai_api_key
 
-The bot automatically caches transcripts and summaries through the CacheService to improve performance and reduce API calls. Cache is managed through the ServiceManager architecture.
+# Enhanced Features (Optional)
+VPS_TRANSCRIPT_API_URL=your_vps_api_url    # For bypass capabilities
+RAPIDAPI_KEY=your_rapidapi_key             # Fallback transcript service
+YOUTUBE_API_KEY=your_youtube_api_key       # For video metadata
 
-For manual cache management (using legacy tools):
+# Model Configuration (GPT-5 Support)
+OPENAI_MODEL=gpt-5-turbo                   # or gpt-4o-mini
+OPENAI_MAX_TOKENS=5000                     # Adjust for your needs
+```
 
+### 3. Database Setup
+The bot automatically creates and manages the SQLite database:
+```bash
+# Database is created at: ./data/bot.db
+# Includes automated schema migration and backup systems
+# No manual setup required!
+```
+
+### 4. Discord Bot Setup
+1. **Create Bot**: Visit [Discord Developer Portal](https://discord.com/developers/applications)
+2. **Enable Intents**: Message Content Intent, Guild Messages Intent
+3. **Invite Bot**: Use OAuth2 URL generator with required permissions
+4. **Deploy Commands**: Bot auto-registers slash commands on startup
+
+## 🎮 Slash Commands
+
+### 📊 **Core Operations**
+- `/test-summary <youtube-url>` - Test AI summary generation
+- `/daily-report [date]` - Generate daily reports (auto-saves to database)
+- `/cache-status` - View cache and database statistics
+- `/config-status` - Check all service configurations
+
+### 🔧 **Management & Debugging**  
+- `/clear-cache` - Clear cache while preserving database
+- `/get-summaries [count]` - Retrieve recent summaries from database
+- `/health-check` - Comprehensive system health validation
+- `/database-stats` - Database performance and usage metrics
+
+### 🎯 **Advanced Features**
+- `/search-summaries <query>` - Search summaries by content/title
+- `/export-data [format]` - Export summaries (JSON/CSV)
+- `/analytics` - Bot usage analytics and performance trends
+- Plus 10+ additional commands for comprehensive management
+
+## 🛠️ Development & Testing
+
+### Run Tests
+```bash
+npm test                    # Full test suite
+npm run test:database      # Database integration tests  
+npm run test:reports       # Report generation tests
+npm run test:summaries     # Summary service tests
+npm run test:all          # Comprehensive system tests
+```
+
+### Development Mode
+```bash
+npm run dev                # Start with hot reload
+npm run health-check      # Validate all services
+npm run clear-cache       # Reset development environment
+```
+
+### Legacy Cache Management (Deprecated)
 ```bash
 # View cache statistics  
 node api/manage-cache.js stats
 
 # Clean cache (remove files older than 30 days or if total size exceeds 500MB)
 node api/manage-cache.js clean
-
-# Clean with custom parameters (e.g., 15 days max age, 200MB max size)
-node api/manage-cache.js clean 15 200
 ```
 
-The modern architecture includes intelligent cache management built into the services.
-- Discord server with appropriate channels set up
-
-### Discord Channel Structure
-
-Set up the following channels in your Discord server:
-
-- `#yt-uploads`: Where YouTube links are posted
-- `#yt-transcripts`: (Optional) Stores raw transcripts
-- `#yt-summary-prompt-*`: Channels with pinned prompts for summarization (e.g., yt-summary-prompt-1, yt-summary-prompt-dev)
-- `#yt-summaries-*`: Where generated summaries are posted (must match prompt suffix, e.g., yt-summaries-1, yt-summaries-dev)
-- `#yt-daily-report-prompt-1`, `#yt-daily-report-prompt-2`, etc.: Channels with pinned prompts for daily reports
-- `#yt-weekly-report-prompt-1`, `#yt-weekly-report-prompt-2`, etc.: Channels with pinned prompts for weekly reports
-- `#yt-monthly-report-prompt-1`, `#yt-monthly-report-prompt-2`, etc.: Channels with pinned prompts for monthly reports
-- `#daily-report`: Where daily reports are posted
-- `#weekly-report`, `#weekly-report-2`, etc.: Where weekly reports are posted
-- `#monthly-report`, `#monthly-report-2`, etc.: Where monthly reports are posted
-
-### Installation
-
-1. Clone this repository
-2. Install dependencies:
-   ```
-   npm install
-   ```
-3. Create a `.env` file with the following variables:
-   ```
-   # Discord Bot Configuration
-   DISCORD_BOT_TOKEN=your_discord_bot_token
-   DISCORD_GUILD_ID=your_guild_id
-   DISCORD_YT_SUMMARIES_CHANNEL=yt-uploads
-   DISCORD_YT_TRANSCRIPTS_CHANNEL=yt-transcripts
-   DISCORD_DAILY_REPORT_CHANNEL=daily-report
-
-   # OpenAI Configuration
-   OPENAI_API_KEY=your_openai_api_key
-   OPENAI_MODEL=gpt-5  # Supports: gpt-5, gpt-4o, gpt-4-turbo, gpt-3.5-turbo
-   OPENAI_MAX_TOKENS=16000  # GPT-5: 16K, GPT-4: 4K recommended
-   
-   # YouTube Configuration (Multi-Strategy Transcript Extraction)
-   YOUTUBE_TRANSCRIPT_IO_TOKEN=your_youtube_transcript_io_api_token
-   VPS_TRANSCRIPT_API_URL=http://your-vps:3000  # Optional: VPS service with residential IP
-   RAPIDAPI_KEY=your_rapidapi_key  # Optional: Final fallback for transcript extraction
-
-   # Channel Prefix Configuration
-   SUMMARY_PROMPT_PREFIX=yt-summary-prompt-
-   SUMMARIES_OUTPUT_PREFIX=yt-summaries-
-   DAILY_REPORT_PROMPT_PREFIX=yt-daily-report-prompt-
-   WEEKLY_REPORT_PROMPT_PREFIX=yt-weekly-report-prompt-
-   MONTHLY_REPORT_PROMPT_PREFIX=yt-monthly-report-prompt-
-
-   # Daily Report Schedule (CEST)
-   DAILY_REPORT_HOUR=18
-   DAILY_REPORT_MINUTE=0
-
-   # Optional Configuration
-   CACHE_TRANSCRIPTS=true
-   DEBUG_MODE=false
-   
-   # Bot Message Processing (Optional)
-   DISCORD_ALLOWED_CHANNELS=youtube,videos,media,links,general,notifications
-   DISCORD_TRUSTED_BOTS=NotifyMe,IFTTT,Zapier,YouTube,RSS
+## 📁 Project Structure
    ```
 
 ### Setting Up Prompts
@@ -160,26 +163,241 @@ Format:
 
 ### Running Locally
 
+## 📁 Project Architecture
+
+```bash
+src/
+├── core/
+│   ├── service-manager.js      # Dependency injection & service lifecycle
+├── services/
+│   ├── database.service.js     # SQLite database with full CRUD operations
+│   ├── cache.service.js        # Intelligent caching with format versioning
+│   ├── discord.service.js      # Discord bot interactions & slash commands
+│   ├── summary.service.js      # OpenAI integration with GPT-5/4 support
+│   ├── transcript.service.js   # Multi-strategy transcript extraction
+│   ├── report.service.js       # Daily/weekly/monthly report generation
+│   └── command.service.js      # 20+ slash commands management
+
+cache/                          # Local cache storage (auto-managed)
+data/                          # SQLite database location
+prompts/                       # Summary and report prompt templates
+utils/                         # Legacy utilities and monitoring
+vps-transcript-api/           # Standalone transcript service
 ```
-npm start
+
+## 🚀 How It Works
+
+### 1. **YouTube Link Detection & Processing**
+- Monitors Discord channels for YouTube links
+- Extracts video IDs and validates URLs
+- Checks cache/database for existing summaries
+
+### 2. **Multi-Strategy Transcript Extraction**
+```javascript
+// Priority order for maximum reliability:
+1. VPS Transcript API (residential IP, bypasses restrictions)
+2. Local YouTube Transcript API 
+3. RapidAPI provider (final fallback)
 ```
 
-For development with auto-restart:
+### 3. **AI-Powered Summarization**
+- **GPT-5 Support**: 110K context window for massive transcripts
+- **Smart Optimization**: Automatic transcript chunking for context limits
+- **Custom Prompts**: Discord-based prompt management with pinned messages
+- **Multi-Model Support**: GPT-5, GPT-4, GPT-3.5 with optimal parameters
 
+### 4. **Enhanced Storage & Retrieval**
+- **Hybrid Architecture**: Fast cache + persistent database
+- **Intelligent Fallback**: Seamless switching between storage layers
+- **Search Capabilities**: Find summaries by content, title, or metadata
+- **Analytics**: Track usage patterns and performance metrics
+
+### 5. **Automated Reporting**
+- **Scheduled Reports**: Daily (18:00 CEST), weekly, monthly
+- **Database Integration**: All summaries persist across restarts
+- **Multi-Channel Support**: Different prompts = different report styles
+- **Export Features**: JSON, CSV, and custom formats
+
+## ⚙️ Configuration Options
+
+### Discord Channel Structure
+```bash
+# Required Channels
+#yt-uploads                    # Where YouTube links are posted
+#yt-summaries-[suffix]         # Summary output channels
+#daily-report                  # Daily report destination
+
+# Prompt Configuration Channels  
+#yt-summary-prompt-[suffix]    # Custom summary prompts (pinned messages)
+#yt-daily-report-prompt-1      # Daily report prompts
+#yt-weekly-report-prompt-1     # Weekly report prompts  
+#yt-monthly-report-prompt-1    # Monthly report prompts
 ```
-npm run dev
+
+### Environment Variables Reference
+```bash
+# Discord Configuration
+DISCORD_BOT_TOKEN=             # Required: Bot authentication
+DISCORD_GUILD_ID=              # Required: Target server ID
+DISCORD_YT_SUMMARIES_CHANNEL=  # Default: yt-uploads
+DISCORD_DAILY_REPORT_CHANNEL=  # Default: daily-report
+
+# OpenAI Configuration (GPT-5 Ready)
+OPENAI_API_KEY=                # Required: OpenAI authentication
+OPENAI_MODEL=gpt-5-turbo       # Model selection
+OPENAI_MAX_TOKENS=5000         # Response limit
+
+# Multi-Strategy Transcript Extraction
+VPS_TRANSCRIPT_API_URL=        # Optional: VPS service endpoint
+RAPIDAPI_KEY=                  # Optional: Fallback provider
+YOUTUBE_API_KEY=               # Optional: Video metadata
+
+# Channel Prefix Configuration
+SUMMARY_PROMPT_PREFIX=yt-summary-prompt-
+SUMMARIES_OUTPUT_PREFIX=yt-summaries-
+DAILY_REPORT_PROMPT_PREFIX=yt-daily-report-prompt-
+
+# Scheduling (CEST Timezone)
+DAILY_REPORT_HOUR=18           # Daily report time
+DAILY_REPORT_MINUTE=0
+
+# Performance & Debug
+CACHE_TRANSCRIPTS=true         # Enable caching
+DEBUG_MODE=false               # Debug logging
 ```
 
-### Deployment
+## 📊 Monitoring & Analytics
 
-#### Vercel
+### Built-in Health Monitoring
+- **Service Status**: All services continuously monitored
+- **API Connectivity**: Real-time OpenAI and Discord API checks  
+- **Database Health**: Connection, performance, and integrity checks
+- **Cache Performance**: Hit rates, cleanup schedules, storage usage
 
-This project includes a `vercel.json` configuration file for easy deployment to Vercel:
+### Performance Metrics
+- **Response Times**: Transcript extraction, AI processing, Discord delivery
+- **Success Rates**: Service reliability and fallback utilization  
+- **Usage Analytics**: Daily processing volumes, popular channels
+- **Error Tracking**: Structured logging with context and resolution steps
 
-1. Install Vercel CLI:
-   ```
-   npm i -g vercel
-   ```
+## 🚀 Deployment Options
+
+### Production Deployment
+
+#### Heroku (Recommended)
+```bash
+# Quick deploy with buildpacks for Puppeteer support
+heroku create your-bot-name
+heroku buildpacks:add heroku/nodejs
+heroku buildpacks:add https://github.com/jontewks/puppeteer-heroku-buildpack
+
+# Set environment variables
+heroku config:set DISCORD_BOT_TOKEN=your_token
+heroku config:set OPENAI_API_KEY=your_key
+# ... add other required env vars
+
+git push heroku main
+```
+
+#### Vercel (Serverless)
+```bash
+# Install Vercel CLI and deploy
+npm i -g vercel
+vercel
+
+# Note: Uses included vercel.json configuration
+# Database will be created in /tmp (ephemeral)
+```
+
+#### VPS/Docker
+```bash
+# Use included DEPLOYMENT_GUIDE.md for detailed instructions
+# Supports Docker, PM2, and systemd configurations
+```
+
+### Environment-Specific Configuration
+
+#### Development
+```bash
+npm run dev              # Hot reload with nodemon
+DEBUG_MODE=true         # Enhanced logging
+CACHE_TRANSCRIPTS=false # Disable caching for testing
+```
+
+#### Production
+```bash
+npm start               # Optimized production mode
+DEBUG_MODE=false        # Minimal logging
+CACHE_TRANSCRIPTS=true  # Enable full caching
+```
+
+## 📚 Documentation & Support
+
+### Quick References
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions
+- **[Database Schema](src/services/database.service.js)** - SQLite table definitions
+- **[Service Architecture](src/core/service-manager.js)** - Dependency injection system
+- **Slash Commands** - Full list available via `/help` command in Discord
+
+### Troubleshooting
+
+#### Common Issues
+1. **Transcript Extraction Failures**
+   - Check VPS service connectivity
+   - Verify RapidAPI key and quota
+   - Monitor service health with `/health-check`
+
+2. **Database Connection Issues**
+   - Database auto-creates at `./data/bot.db`
+   - Check file permissions and disk space
+   - Run `/database-stats` for diagnostics
+
+3. **OpenAI API Errors**
+   - Verify API key and billing status
+   - Check model availability (GPT-5 vs GPT-4)
+   - Monitor token usage with `/analytics`
+
+#### Performance Optimization
+- **Cache Hit Rates**: Monitor via `/cache-status`
+- **Database Performance**: Check with `/database-stats`
+- **Service Response Times**: View with `/health-check`
+
+## 🤝 Contributing & Development
+
+### Development Setup
+```bash
+git clone <repository>
+cd yt-discord-automation
+npm install
+cp .env.example .env    # Configure environment
+npm run dev            # Start development server
+```
+
+### Testing
+```bash
+npm test               # Full test suite
+npm run test:database  # Database integration tests
+npm run test:reports   # Report generation tests
+```
+
+### Code Quality
+- **ESLint Configuration**: Automated code formatting
+- **Error Handling**: Comprehensive try-catch with logging
+- **Service Architecture**: Dependency injection for testability
+- **Database Migrations**: Automatic schema updates
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🏆 Acknowledgments
+
+- **OpenAI** for GPT-5/GPT-4 AI capabilities
+- **Discord.js** for robust Discord integration
+- **YouTube Transcript API** for multi-strategy extraction
+- **SQLite** for reliable data persistence
 
 2. Deploy:
    ```

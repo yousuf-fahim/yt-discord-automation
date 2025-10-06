@@ -7,6 +7,11 @@
     "start": "node src/main.js",
     "dev": "NODE_ENV=development nodemon src/main.js",
     "health": "curl -f http://localhost:3000/health || echo 'Health check failed'",
+    "test": "node test-comprehensive-system.js",
+    "test:database": "node test-database-integration.js",
+    "test:reports": "node test-final-verification.js",
+    "test:summaries": "node test-check-summaries.js",
+    "test:all": "npm run test:summaries && npm run test:reports && npm run test:database && npm run test",
     "heroku-prebuild": "echo 'No prebuild needed'",
     "heroku-postbuild": "echo 'Skipping npm postbuild'"
   },
