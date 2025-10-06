@@ -162,6 +162,14 @@ class CacheService {
     
     // Handle both old format (array) and new format ({data: array, timestamp: number})
     if (Array.isArray(cached)) {
+      // Convert old format to new format and save
+      const newFormat = {
+        data: cached,
+        timestamp: Date.now(),
+        type: 'summaries',
+        date: today
+      };
+      await this.set(`summaries_${today}`, newFormat);
       return cached;
     } else if (cached && cached.data && Array.isArray(cached.data)) {
       return cached.data;

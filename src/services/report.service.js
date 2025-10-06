@@ -23,7 +23,20 @@ class ReportService {
       const summaries = await this.getRecentSummaries();
       
       if (summaries.length === 0) {
-        return this.generateEmptyReport();
+        const emptyReportText = this.generateEmptyReport().data;
+        
+        const emptyReport = {
+          data: emptyReportText,
+          timestamp: Date.now(),
+          type: 'daily',
+          summaryCount: 0
+        };
+        
+        // Cache the empty report too
+        const reportKey = `daily_report_${new Date().toISOString().split('T')[0]}`;
+        await this.cache.set(reportKey, emptyReport);
+        
+        return emptyReport;
       }
 
       const report = this.buildReport(summaries);
@@ -31,14 +44,21 @@ class ReportService {
       // Wrap in proper format
       const reportData = {
         data: report,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        type: 'daily',
+        summaryCount: summaries.length
       };
       
       // Cache the report
       const reportKey = `daily_report_${new Date().toISOString().split('T')[0]}`;
-      await this.cache.set(reportKey, reportData);
+      const cacheSuccess = await this.cache.set(reportKey, reportData);
       
-      this.logger.info(`Daily report generated with ${summaries.length} videos`);
+      if (cacheSuccess) {
+        this.logger.info(`Daily report generated and cached with ${summaries.length} videos`);
+      } else {
+        this.logger.warn(`Daily report generated but caching failed`);
+      }
+      
       return reportData;
       
     } catch (error) {
@@ -116,8 +136,11 @@ class ReportService {
   async getRecentSummaries() {
     try {
       // Get summaries from the last 24 hours
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const now = new Date();
+      
+      // Get today's date (don't modify time for the actual date lookup)
+      const todayStr = now.toISOString().split('T')[0];
+      const today = new Date(todayStr);
       
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -125,6 +148,7 @@ class ReportService {
       console.log('🔍 Report Debug - Looking for summaries:');
       console.log(`📅 Today: ${today.toISOString().split('T')[0]}`);
       console.log(`📅 Yesterday: ${yesterday.toISOString().split('T')[0]}`);
+      console.log(`📅 Current time: ${now.toISOString()}`);
       
       // Get all cached summaries from today and yesterday
       const todaySummaries = await this.getSummariesByDate(today);
@@ -233,19 +257,38 @@ class ReportService {
       }
       
       // Retrieve existing summaries for today
-      const todaySummaries = await cacheService.get(`summaries_${today}`) || [];
+      const existingCache = await cacheService.get(`summaries_${today}`);
+      
+      // Handle both old format (array) and new format ({data: array, timestamp: number})
+      let todaySummaries = [];
+      if (Array.isArray(existingCache)) {
+        // Old format - convert to new format
+        todaySummaries = existingCache;
+      } else if (existingCache && existingCache.data && Array.isArray(existingCache.data)) {
+        // New format
+        todaySummaries = existingCache.data;
+      }
       
       // Add new summary
-      todaySummaries.push({
+      const newSummary = {
         videoId: summary.videoId,
         videoTitle: summary.videoTitle,
         summaryContent: summary.summaryContent,
         videoUrl: summary.videoUrl,
-        timestamp: Date.now()
-      });
+        timestamp: new Date().toISOString()
+      };
       
-      // Save updated summaries
-      await cacheService.set(`summaries_${today}`, todaySummaries);
+      todaySummaries.push(newSummary);
+      
+      // Save in new standardized format
+      const summaryData = {
+        data: todaySummaries,
+        timestamp: Date.now(),
+        type: 'summaries',
+        date: today
+      };
+      
+      await cacheService.set(`summaries_${today}`, summaryData);
       
       this.logger.info(`Saved summary for video ${summary.videoId} to daily cache`);
       return true;
@@ -299,7 +342,8 @@ class ReportService {
     });
     
     if (!summaries || summaries.length === 0) {
-      return this.generateEmptyReport();
+      const emptyReport = this.generateEmptyReport();
+      return emptyReport.data; // Return just the text, not the wrapper
     }
 
     let reportText = `📅 **Daily Report - ${date}**\n\n`;
@@ -315,10 +359,7 @@ class ReportService {
 
     reportText += `_Generated at ${new Date().toLocaleTimeString()}_`;
 
-    return {
-      data: reportText,
-      timestamp: Date.now()
-    };
+    return reportText; // Return just the text
   }
 
   async buildWeeklyReport(summaries, customPrompt) {
