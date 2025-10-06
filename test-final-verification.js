@@ -24,8 +24,8 @@ async function finalVerificationTest() {
     
     await serviceManager.initializeAll();
     
-    const reportService = serviceManager.getService('report');
-    const cacheService = serviceManager.getService('cache');
+    const reportService = await serviceManager.getService('report');
+    const cacheService = await serviceManager.getService('cache');
     
     console.log('\n✅ Phase 1: Service Health Check');
     console.log('----------------------------------------------------------------------');

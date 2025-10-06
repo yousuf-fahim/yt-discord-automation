@@ -21,11 +21,16 @@ async function testCheckSummariesCommand() {
     serviceManager.registerService('report', ReportService, ['summary', 'cache']);
     await serviceManager.initializeAll();
 
-    const cache = serviceManager.getService('cache');
-    const report = serviceManager.getService('report');
+    const cache = await serviceManager.getService('cache');
+    const report = await serviceManager.getService('report');
 
     console.log('\n1️⃣ Testing Cache Service Methods');
     console.log('-'.repeat(70));
+
+    // Debug: Check what cache object we got
+    console.log(`Cache service type: ${typeof cache}`);
+    console.log(`Cache methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(cache))}`);
+    console.log(`Has getTodaysSummaries: ${typeof cache.getTodaysSummaries === 'function'}`);
 
     // Test getTodaysSummaries (used by /check-summaries)
     const todaysSummaries = await cache.getTodaysSummaries();
