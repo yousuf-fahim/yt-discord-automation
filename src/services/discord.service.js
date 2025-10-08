@@ -838,12 +838,25 @@ ${transcript}`;
       // Generate custom daily report using OpenAI
       const customReport = await this.generateCustomDailyReport(summaries, customPrompt);
       
-      // Find corresponding output channel (remove 'prompt-' from name)
-      const outputChannelName = promptChannel.name.replace(this.config.prefixes.dailyReportPrompt, 'daily-report-');
-      let outputChannel = guild.channels.cache.find(ch => ch.name === outputChannelName);
+      // Find corresponding output channel - try both numbered and non-numbered
+      const suffix = promptChannel.name.replace(this.config.prefixes.dailyReportPrompt, '');
+      let outputChannel = null;
+      
+      if (suffix) {
+        // Try numbered channel first (e.g., daily-report-1)
+        const numberedChannelName = `daily-report-${suffix}`;
+        outputChannel = guild.channels.cache.find(ch => ch.name === numberedChannelName);
+      }
       
       if (!outputChannel) {
-        // Fallback to default daily-report channel
+        // Fallback to default daily-report channel (without number)
+        outputChannel = guild.channels.cache.find(
+          channel => channel.name && channel.name === this.config.channels.dailyReport
+        );
+      }
+      
+      if (!outputChannel) {
+        // Secondary fallback - any channel containing daily-report
         outputChannel = guild.channels.cache.find(
           channel => channel.name && channel.name.includes(this.config.channels.dailyReport)
         );
@@ -963,12 +976,18 @@ ${transcript}`;
       // Generate weekly report
       const report = await this.report.generateWeeklyReport(customPrompt);
       
-      // Find corresponding output channel
-      const outputChannelName = promptChannel.name.replace(this.config.prefixes.weeklyReportPrompt, 'weekly-report-');
-      let outputChannel = guild.channels.cache.find(ch => ch.name === outputChannelName);
+      // Find corresponding output channel - try both numbered and non-numbered  
+      const suffix = promptChannel.name.replace(this.config.prefixes.weeklyReportPrompt, '');
+      let outputChannel = null;
+      
+      if (suffix) {
+        // Try numbered channel first (e.g., weekly-report-1)
+        const numberedChannelName = `weekly-report-${suffix}`;
+        outputChannel = guild.channels.cache.find(ch => ch.name === numberedChannelName);
+      }
       
       if (!outputChannel) {
-        // Try generic weekly-report channel
+        // Try generic weekly-report channel (without number)
         outputChannel = guild.channels.cache.find(ch => ch.name === 'weekly-report');
       }
       
@@ -1068,12 +1087,18 @@ ${transcript}`;
       // Generate monthly report
       const report = await this.report.generateMonthlyReport(customPrompt);
       
-      // Find corresponding output channel
-      const outputChannelName = promptChannel.name.replace(this.config.prefixes.monthlyReportPrompt, 'monthly-report-');
-      let outputChannel = guild.channels.cache.find(ch => ch.name === outputChannelName);
+      // Find corresponding output channel - try both numbered and non-numbered
+      const suffix = promptChannel.name.replace(this.config.prefixes.monthlyReportPrompt, '');
+      let outputChannel = null;
+      
+      if (suffix) {
+        // Try numbered channel first (e.g., monthly-report-1)
+        const numberedChannelName = `monthly-report-${suffix}`;
+        outputChannel = guild.channels.cache.find(ch => ch.name === numberedChannelName);
+      }
       
       if (!outputChannel) {
-        // Try generic monthly-report channel
+        // Try generic monthly-report channel (without number)
         outputChannel = guild.channels.cache.find(ch => ch.name === 'monthly-report');
       }
       
