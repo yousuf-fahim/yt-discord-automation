@@ -20,32 +20,158 @@ class CommandService {
   initializeCommands() {
     console.log('🤖 Initializing Discord slash commands...');
     
-    // Register all functional commands
-    this.registerHealthCommand();
-    this.registerDetailedHealthCommand();
-    this.registerTriggerReportCommand();
-    this.registerTestSummaryCommand();
-    this.registerReloadPromptsCommand();
+    // === HELP & DISCOVERY ===
+    this.registerHelpCommand();
+    
+    // === MONITORING ===
+    this.registerHealthCommand(); // Merged detailed-health into this
+    this.registerStatusCommand(); // New - replaces check-summaries
     this.registerLogsCommand();
-    this.registerCacheStatsCommand();
-    this.registerChannelStatusCommand();
-    this.registerTranscriptTestCommand();
-    this.registerValidatePromptsCommand();
-    this.registerDebugCacheCommand();
-    this.registerCheckSummariesCommand();
-    this.registerClearCacheCommand();
+    this.registerCheckSummariesCommand(); // Keep for detailed summary checking
+    this.registerCheckTranscriptsCommand(); // New - check transcript cache
+    
+    // === REPORTS ===
+    this.registerReportCommand(); // Enhanced report command
+    this.registerTriggerReportCommand(); // Keep original for quick access
+    this.registerScheduleCommand(); // Renamed from set-schedule
+    
+    // === PROCESSING ===
+    this.registerProcessCommand(); // Enhanced processing command  
+    this.registerTestSummaryCommand(); // Keep original for quick testing
+    this.registerTranscriptCommand(); // Enhanced transcript command
+    this.registerTranscriptTestCommand(); // Keep original for quick testing
+    
+    // === ADMINISTRATION ===
     this.registerConfigCommand();
-    this.registerSetModelCommand();
-    this.registerTestModelCommand();
-    this.registerSetScheduleCommand();
+    this.registerModelCommand(); // Merged set-model + test-model
+    this.registerCacheCommand(); // Merged cache-stats + debug-cache + clear-cache
+    this.registerPromptsCommand(); // Merged reload-prompts + validate-prompts
+    this.registerChannelStatusCommand(); // Keep as-is for now
     
     console.log(`✅ Registered ${this.commands.size} slash commands`);
   }
 
+  // === HELP & DISCOVERY ===
+  
+  registerHelpCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('help')
+      .setDescription('Show all available commands organized by category')
+      .addStringOption(option =>
+        option.setName('category')
+          .setDescription('Show commands for specific category')
+          .setRequired(false)
+          .addChoices(
+            { name: '🔍 Monitoring', value: 'monitoring' },
+            { name: '📊 Reports', value: 'reports' },
+            { name: '🎬 Processing', value: 'processing' },
+            { name: '⚙️ Administration', value: 'admin' }
+          )
+      );
+    
+    this.commands.set('help', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const category = interaction.options.getString('category');
+          
+          const commandCategories = {
+            monitoring: {
+              title: '🔍 Monitoring Commands',
+              color: 0x74c0fc,
+              commands: [
+                { name: '/health', desc: 'Check service health status (use --detailed for comprehensive)' },
+                { name: '/status', desc: 'Bot dashboard with recent activity and summaries' },
+                { name: '/logs', desc: 'View recent bot activity logs' }
+              ]
+            },
+            reports: {
+              title: '📊 Report Commands', 
+              color: 0x51cf66,
+              commands: [
+                { name: '/report', desc: 'Trigger daily/weekly/monthly reports manually' },
+                { name: '/schedule', desc: 'Update report timing and schedules' }
+              ]
+            },
+            processing: {
+              title: '🎬 Processing Commands',
+              color: 0xffd43b,
+              commands: [
+                { name: '/process', desc: 'Process single YouTube video for testing' },
+                { name: '/transcript', desc: 'Test transcript extraction for specific video' }
+              ]
+            },
+            admin: {
+              title: '⚙️ Administration Commands',
+              color: 0xff6b6b,
+              commands: [
+                { name: '/config', desc: 'View current bot configuration' },
+                { name: '/model', desc: 'Manage OpenAI models (set/test)' },
+                { name: '/cache', desc: 'Manage cache (stats/debug/clear)' },
+                { name: '/prompts', desc: 'Manage Discord prompts (reload/validate)' },
+                { name: '/channel-status', desc: 'Check monitored Discord channels' }
+              ]
+            }
+          };
+
+          if (category && commandCategories[category]) {
+            // Show specific category
+            const cat = commandCategories[category];
+            const embed = new EmbedBuilder()
+              .setTitle(cat.title)
+              .setColor(cat.color)
+              .setTimestamp();
+            
+            cat.commands.forEach(cmd => {
+              embed.addFields({
+                name: cmd.name,
+                value: cmd.desc,
+                inline: false
+              });
+            });
+            
+            await interaction.editReply({ embeds: [embed] });
+          } else {
+            // Show all categories overview
+            const embed = new EmbedBuilder()
+              .setTitle('🤖 Discord Bot Commands')
+              .setDescription('Use `/help category:monitoring` to see specific category commands')
+              .setColor(0x5865f2)
+              .setTimestamp();
+            
+            Object.entries(commandCategories).forEach(([key, cat]) => {
+              const commandList = cat.commands.map(cmd => cmd.name).join(', ');
+              embed.addFields({
+                name: cat.title,
+                value: commandList,
+                inline: false
+              });
+            });
+            
+            await interaction.editReply({ embeds: [embed] });
+          }
+          
+        } catch (error) {
+          console.error('❌ Help command error:', error);
+          await interaction.editReply('❌ Error showing help: ' + error.message);
+        }
+      }
+    });
+  }
+
+  // === MONITORING ===
+
   registerHealthCommand() {
     const command = new SlashCommandBuilder()
       .setName('health')
-      .setDescription('Check the health status of all bot services');
+      .setDescription('Check the health status of all bot services')
+      .addBooleanOption(option =>
+        option.setName('detailed')
+          .setDescription('Show detailed health diagnostics')
+          .setRequired(false)
+      );
     
     this.commands.set('health', {
       data: command,
@@ -53,37 +179,102 @@ class CommandService {
         await interaction.deferReply();
         
         try {
-          console.log('🔍 Running health check via command...');
+          const detailed = interaction.options.getBoolean('detailed') || false;
+          console.log(`🔍 Running health check via command (detailed: ${detailed})...`);
           
-          // Get all services
-          const transcriptService = await this.serviceManager.getService('transcript');
-          const reportService = await this.serviceManager.getService('report');
-          const summaryService = await this.serviceManager.getService('summary');
-          
-          // Check each service
-          const healthResults = {
-            transcript: await this.checkServiceHealth(transcriptService),
-            report: await this.checkServiceHealth(reportService),
-            summary: await this.checkServiceHealth(summaryService),
-            discord: { status: 'ok', details: 'Connected and responding' }
-          };
-          
-          // Create health report embed
-          const embed = new EmbedBuilder()
-            .setTitle('🔍 Bot Health Status')
-            .setColor(this.getOverallHealthColor(healthResults))
-            .setTimestamp();
-          
-          Object.entries(healthResults).forEach(([service, result]) => {
-            const status = this.getServiceStatusIcon(result.status);
-            embed.addFields({
-              name: `${status} ${service.charAt(0).toUpperCase() + service.slice(1)} Service`,
-              value: result.details || result.status,
-              inline: true
+          if (detailed) {
+            // Detailed health check (merged from registerDetailedHealthCommand)
+            const serviceTypes = ['transcript', 'summary', 'report', 'discord'];
+            const results = [];
+            
+            for (const serviceType of serviceTypes) {
+              try {
+                const service = await this.serviceManager.getService(serviceType);
+                if (service && service.healthCheck) {
+                  const result = await service.healthCheck();
+                  results.push({
+                    name: serviceType,
+                    status: result.status,
+                    details: result,
+                    error: result.error
+                  });
+                } else {
+                  results.push({
+                    name: serviceType,
+                    status: 'unavailable',
+                    details: { message: 'Service not available or no health check method' },
+                    error: null
+                  });
+                }
+              } catch (error) {
+                results.push({
+                  name: serviceType,
+                  status: 'error',
+                  details: { message: 'Health check failed' },
+                  error: error.message
+                });
+              }
+            }
+            
+            const embed = new EmbedBuilder()
+              .setTitle('🔍 Detailed Health Diagnostics')
+              .setColor(results.some(r => r.status === 'error') ? 0xff6b6b : 0x51cf66)
+              .setTimestamp();
+            
+            results.forEach(result => {
+              const status = this.getServiceStatusIcon(result.status);
+              let value = `**Status**: ${result.status}\n`;
+              
+              if (result.details && typeof result.details === 'object') {
+                Object.entries(result.details).forEach(([key, val]) => {
+                  if (key !== 'status') {
+                    value += `**${key}**: ${val}\n`;
+                  }
+                });
+              }
+              
+              if (result.error) {
+                value += `**Error**: ${result.error}\n`;
+              }
+              
+              embed.addFields({
+                name: `${status} ${result.name.charAt(0).toUpperCase() + result.name.slice(1)} Service`,
+                value: value.trim(),
+                inline: true
+              });
             });
-          });
-          
-          await interaction.editReply({ embeds: [embed] });
+            
+            await interaction.editReply({ embeds: [embed] });
+          } else {
+            // Basic health check (original functionality)
+            const transcriptService = await this.serviceManager.getService('transcript');
+            const reportService = await this.serviceManager.getService('report');
+            const summaryService = await this.serviceManager.getService('summary');
+            
+            const healthResults = {
+              transcript: await this.checkServiceHealth(transcriptService),
+              report: await this.checkServiceHealth(reportService),
+              summary: await this.checkServiceHealth(summaryService),
+              discord: { status: 'ok', details: 'Connected and responding' }
+            };
+            
+            const embed = new EmbedBuilder()
+              .setTitle('🔍 Bot Health Status')
+              .setDescription('Use `/health detailed:true` for comprehensive diagnostics')
+              .setColor(this.getOverallHealthColor(healthResults))
+              .setTimestamp();
+            
+            Object.entries(healthResults).forEach(([service, result]) => {
+              const status = this.getServiceStatusIcon(result.status);
+              embed.addFields({
+                name: `${status} ${service.charAt(0).toUpperCase() + service.slice(1)} Service`,
+                value: result.details || result.status,
+                inline: true
+              });
+            });
+            
+            await interaction.editReply({ embeds: [embed] });
+          }
           
         } catch (error) {
           console.error('❌ Health check command error:', error);
@@ -93,106 +284,117 @@ class CommandService {
     });
   }
 
-  registerDetailedHealthCommand() {
+  registerStatusCommand() {
     const command = new SlashCommandBuilder()
-      .setName('detailed-health')
-      .setDescription('Get detailed health information and diagnostics');
+      .setName('status')
+      .setDescription('Bot dashboard with recent activity and summary overview')
+      .addBooleanOption(option =>
+        option.setName('all-dates')
+          .setDescription('Show summaries from all dates')
+          .setRequired(false)
+      );
     
-    this.commands.set('detailed-health', {
+    this.commands.set('status', {
       data: command,
       execute: async (interaction) => {
         await interaction.deferReply();
         
         try {
-          console.log('🔍 Running detailed health check via command...');
+          const showAll = interaction.options.getBoolean('all-dates') || false;
+          console.log(`📊 Bot status dashboard, showAll: ${showAll}`);
           
-          const serviceTypes = ['transcript', 'summary', 'report', 'discord'];
-          const results = [];
+          const cacheService = await this.serviceManager.getService('cache');
+          const reportService = await this.serviceManager.getService('report');
+          const discordService = await this.serviceManager.getService('discord');
           
-          for (const serviceType of serviceTypes) {
-            try {
-              const service = await this.serviceManager.getService(serviceType);
-              if (service && service.healthCheck) {
-                const result = await service.healthCheck();
-                results.push({
-                  name: serviceType,
-                  status: result.status,
-                  details: result,
-                  error: result.error
-                });
-              } else {
-                results.push({
-                  name: serviceType,
-                  status: 'unavailable',
-                  details: { status: 'Service not available or missing healthCheck method' }
-                });
-              }
-            } catch (error) {
-              results.push({
-                name: serviceType,
-                status: 'error',
-                details: { status: 'error', error: error.message },
-                error: error.message
-              });
-            }
+          if (!cacheService || !reportService || !discordService) {
+            throw new Error('Required services not available');
           }
           
+          // Get today's summaries
+          const today = new Date().toISOString().split('T')[0];
+          const summaries = await reportService.getTodaysSummaries();
+          
+          // Get cache stats
+          const cacheStats = await cacheService.getStats();
+          
+          // Check service health quickly
+          const healthResults = {
+            transcript: await this.checkServiceHealth(await this.serviceManager.getService('transcript')),
+            summary: await this.checkServiceHealth(await this.serviceManager.getService('summary')),
+            report: await this.checkServiceHealth(reportService)
+          };
+          
+          const allHealthy = Object.values(healthResults).every(result => result.status === 'ok');
+          
           const embed = new EmbedBuilder()
-            .setTitle('🔍 Detailed Health Check Results')
-            .setColor(results.some(r => r.status === 'error') ? 0xff6b6b : 0x51cf66)
+            .setTitle('📊 Bot Status Dashboard')
+            .setColor(allHealthy ? 0x51cf66 : 0xffd43b)
+            .addFields(
+              {
+                name: '🔍 Service Health',
+                value: allHealthy ? '✅ All services healthy' : '⚠️ Some issues detected (use `/health detailed:true`)',
+                inline: true
+              },
+              {
+                name: '📈 Today\'s Activity',
+                value: `**Summaries**: ${summaries.length}\n**Cache Files**: ${cacheStats.totalFiles}\n**Cache Size**: ${(cacheStats.totalSize / 1024 / 1024).toFixed(2)} MB`,
+                inline: true
+              },
+              {
+                name: '⏰ Last Activity',
+                value: summaries.length > 0 ? `<t:${Math.floor(new Date(summaries[0].created_at).getTime() / 1000)}:R>` : 'No recent activity',
+                inline: true
+              }
+            )
             .setTimestamp();
           
-          results.forEach(result => {
-            const status = result.status === 'ok' ? '✅' : 
-                          result.status === 'error' ? '❌' : '⚠️';
-            
-            let value = `**Status**: ${result.status}\n`;
-            
-            if (result.details) {
-              if (result.details.model) value += `**Model**: ${result.details.model}\n`;
-              if (result.details.apiKeyConfigured !== undefined) value += `**API Key**: ${result.details.apiKeyConfigured ? '✅ Configured' : '❌ Missing'}\n`;
-              if (result.details.servicesAvailable) value += `**Services**: ${result.details.servicesAvailable.join(', ')}\n`;
-            }
-            
-            if (result.error) {
-              value += `**Error**: ${result.error}`;
-            }
+          if (summaries.length > 0) {
+            const recentSummaries = summaries.slice(0, showAll ? summaries.length : 5);
+            const summaryList = recentSummaries.map(summary => 
+              `• **${summary.title}** (<t:${Math.floor(new Date(summary.created_at).getTime() / 1000)}:R>)`
+            ).join('\n');
             
             embed.addFields({
-              name: `${status} ${result.name.charAt(0).toUpperCase() + result.name.slice(1)} Service`,
-              value: value || 'No additional details',
-              inline: true
+              name: `📝 Recent Summaries ${showAll ? '' : '(5 most recent)'}`,
+              value: summaryList.length > 1024 ? summaryList.substring(0, 1020) + '...' : summaryList,
+              inline: false
             });
-          });
-          
-          // Add system info
-          embed.addFields({
-            name: '🖥️ System Information',
-            value: `**Node.js**: ${process.version}\n**Memory**: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n**Uptime**: ${Math.round(process.uptime())}s`,
-            inline: false
-          });
+          }
           
           await interaction.editReply({ embeds: [embed] });
           
         } catch (error) {
-          console.error('❌ Detailed health check command error:', error);
-          await interaction.editReply('❌ Error running detailed health check: ' + error.message);
+          console.error('❌ Status command error:', error);
+          await interaction.editReply('❌ Error retrieving status: ' + error.message);
         }
       }
     });
   }
 
-  registerTriggerReportCommand() {
+  // === REPORTS ===
+
+  registerReportCommand() {
     const command = new SlashCommandBuilder()
-      .setName('trigger-report')
-      .setDescription('Trigger daily report generation')
+      .setName('report')
+      .setDescription('Generate and send daily/weekly/monthly reports manually')
+      .addStringOption(option =>
+        option.setName('type')
+          .setDescription('Type of report to generate')
+          .setRequired(false)
+          .addChoices(
+            { name: 'Daily Report', value: 'daily' },
+            { name: 'Weekly Report', value: 'weekly' },
+            { name: 'Monthly Report', value: 'monthly' }
+          )
+      )
       .addStringOption(option =>
         option.setName('channel')
           .setDescription('Specific channel name or "all" for all channels')
           .setRequired(false)
       );
     
-    this.commands.set('trigger-report', {
+    this.commands.set('report', {
       data: command,
       execute: async (interaction) => {
         await interaction.deferReply();
@@ -277,6 +479,355 @@ class CommandService {
       }
     });
   }
+
+  registerTriggerReportCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('trigger-report')
+      .setDescription('Quick daily report generation (simplified version)')
+      .addStringOption(option =>
+        option.setName('channel')
+          .setDescription('Specific channel name or "all" for all channels')
+          .setRequired(false)
+      );
+    
+    this.commands.set('trigger-report', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const channelOption = interaction.options.getString('channel') || 'all';
+          console.log(`📊 Quick triggering daily report for: ${channelOption}`);
+          
+          const reportService = await this.serviceManager.getService('report');
+          const discordService = await this.serviceManager.getService('discord');
+          
+          if (!reportService || !discordService) {
+            throw new Error('Required services not available');
+          }
+          
+          let results = [];
+          
+          if (channelOption === 'all') {
+            try {
+              await discordService.sendDailyReports();
+              results.push('✅ Daily reports sent to all channels');
+            } catch (error) {
+              results.push(`❌ Error sending daily reports: ${error.message}`);
+            }
+          } else {
+            try {
+              await reportService.generateDailyReport();
+              await discordService.sendDailyReportToChannel(channelOption);
+              results.push(`✅ Daily report sent to #${channelOption}`);
+            } catch (error) {
+              results.push(`❌ Error sending daily report to #${channelOption}: ${error.message}`);
+            }
+          }
+          
+          const embed = new EmbedBuilder()
+            .setTitle('📊 Quick Report Trigger Results')
+            .setDescription(results.join('\n'))
+            .setColor(results.some(r => r.includes('❌')) ? 0xff6b6b : 0x51cf66)
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Trigger report command error:', error);
+          await interaction.editReply('❌ Error triggering report: ' + error.message);
+        }
+      }
+    });
+  }
+
+  // === PROCESSING ===
+  
+  registerProcessCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('process')
+      .setDescription('Process a single YouTube video immediately for testing')
+      .addStringOption(option =>
+        option.setName('video-url')
+          .setDescription('YouTube video URL to process')
+          .setRequired(true)
+      )
+      .addStringOption(option =>
+        option.setName('channel')
+          .setDescription('Summary channel name (e.g. "1" for yt-summaries-1)')
+          .setRequired(false)
+      );
+    
+    this.commands.set('process', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const videoUrl = interaction.options.getString('video-url');
+          const channelOption = interaction.options.getString('channel') || '1';
+          
+          console.log(`🎯 Processing video via command: ${videoUrl} -> channel ${channelOption}`);
+          
+          // Extract video ID
+          const videoId = this.extractVideoId(videoUrl);
+          if (!videoId) {
+            await interaction.editReply('❌ Invalid YouTube URL. Please provide a valid YouTube video URL.');
+            return;
+          }
+          
+          // Get services
+          const transcriptService = await this.serviceManager.getService('transcript');
+          const summaryService = await this.serviceManager.getService('summary');
+          const discordService = await this.serviceManager.getService('discord');
+          
+          if (!transcriptService || !summaryService || !discordService) {
+            throw new Error('Required services not available');
+          }
+          
+          const startTime = Date.now();
+          
+          // Step 1: Get transcript
+          await interaction.editReply('🎬 Extracting video transcript...');
+          const transcript = await transcriptService.getTranscript(videoId);
+          
+          if (!transcript) {
+            await interaction.editReply('❌ Failed to extract transcript. Video may not have captions or may be unavailable.');
+            return;
+          }
+          
+          // Step 2: Generate summary
+          await interaction.editReply('🤖 Generating AI summary...');
+          const summary = await summaryService.generateSummary(transcript, videoId);
+          
+          if (!summary) {
+            await interaction.editReply('❌ Failed to generate summary. OpenAI service may be unavailable.');
+            return;
+          }
+          
+          // Step 3: Send to Discord channel
+          await interaction.editReply('📤 Sending to Discord channel...');
+          
+          // Find target channel
+          const targetChannelName = `yt-summaries-${channelOption}`;
+          const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+          const targetChannel = guild?.channels.cache.find(ch => ch.name === targetChannelName);
+          
+          if (!targetChannel) {
+            await interaction.editReply(`❌ Channel #${targetChannelName} not found`);
+            return;
+          }
+          
+          // Send summary to channel
+          await discordService.sendLongMessage(targetChannel, summary, videoId);
+          
+          const duration = Date.now() - startTime;
+          
+          const embed = new EmbedBuilder()
+            .setTitle('✅ Video Processing Complete')
+            .setColor(0x51cf66)
+            .addFields(
+              { name: '🎬 Video ID', value: videoId, inline: true },
+              { name: '📺 Channel', value: `#${targetChannelName}`, inline: true },
+              { name: '⏱️ Total Time', value: `${Math.round(duration / 1000)}s`, inline: true },
+              { name: '📝 Summary Length', value: `${summary.length} characters`, inline: true }
+            )
+            .setTimestamp();
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Process command error:', error);
+          await interaction.editReply('❌ Error processing video: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerTestSummaryCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('test-summary')
+      .setDescription('Process a single YouTube video immediately (original quick version)')
+      .addStringOption(option =>
+        option.setName('video-url')
+          .setDescription('YouTube video URL to process')
+          .setRequired(true)
+      )
+      .addStringOption(option =>
+        option.setName('channel')
+          .setDescription('Summary channel name (e.g. "1" for yt-summaries-1)')
+          .setRequired(false)
+      );
+    
+    this.commands.set('test-summary', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const videoUrl = interaction.options.getString('video-url');
+          const channelOption = interaction.options.getString('channel') || '1';
+          
+          console.log(`🎯 Test summary via command: ${videoUrl} -> channel ${channelOption}`);
+          
+          // Extract video ID
+          const videoId = this.extractVideoId(videoUrl);
+          if (!videoId) {
+            await interaction.editReply('❌ Invalid YouTube URL');
+            return;
+          }
+          
+          const transcriptService = await this.serviceManager.getService('transcript');
+          const summaryService = await this.serviceManager.getService('summary');
+          const discordService = await this.serviceManager.getService('discord');
+          
+          if (!transcriptService || !summaryService || !discordService) {
+            throw new Error('Required services not available');
+          }
+          
+          // Quick processing
+          const transcript = await transcriptService.getTranscript(videoId);
+          if (!transcript) {
+            await interaction.editReply('❌ Failed to extract transcript');
+            return;
+          }
+          
+          const summary = await summaryService.generateSummary(transcript, videoId);
+          if (!summary) {
+            await interaction.editReply('❌ Failed to generate summary');
+            return;
+          }
+          
+          // Send to channel
+          const targetChannelName = `yt-summaries-${channelOption}`;
+          const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+          const targetChannel = guild?.channels.cache.find(ch => ch.name === targetChannelName);
+          
+          if (targetChannel) {
+            await discordService.sendLongMessage(targetChannel, summary, videoId);
+            await interaction.editReply(`✅ Summary sent to #${targetChannelName}`);
+          } else {
+            await interaction.editReply(`❌ Channel #${targetChannelName} not found`);
+          }
+          
+        } catch (error) {
+          console.error('❌ Test summary command error:', error);
+          await interaction.editReply('❌ Error: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerTranscriptCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('transcript')
+      .setDescription('Test transcript extraction for a specific video')
+      .addStringOption(option =>
+        option.setName('video-id')
+          .setDescription('YouTube video ID to test')
+          .setRequired(true)
+      );
+    
+    this.commands.set('transcript', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const videoId = interaction.options.getString('video-id');
+          console.log(`🎬 Testing transcript extraction via command: ${videoId}`);
+          
+          const transcriptService = await this.serviceManager.getService('transcript');
+          if (!transcriptService) {
+            throw new Error('Transcript service not available');
+          }
+          
+          const startTime = Date.now();
+          const transcript = await transcriptService.getTranscript(videoId);
+          const duration = Date.now() - startTime;
+          
+          const embed = new EmbedBuilder()
+            .setTitle('🎬 Transcript Test Results')
+            .setColor(transcript ? 0x51cf66 : 0xff6b6b)
+            .addFields(
+              { name: '🎯 Video ID', value: videoId, inline: true },
+              { name: '⏱️ Extraction Time', value: `${duration}ms`, inline: true },
+              { name: '📊 Status', value: transcript ? '✅ Success' : '❌ Failed', inline: true }
+            )
+            .setTimestamp();
+          
+          if (transcript) {
+            const preview = transcript.length > 500 ? transcript.substring(0, 500) + '...' : transcript;
+            embed.addFields(
+              { name: '📝 Length', value: `${transcript.length} characters`, inline: true },
+              { name: '📄 Preview', value: `\`\`\`${preview}\`\`\``, inline: false }
+            );
+          } else {
+            embed.addFields({
+              name: '❌ Possible Issues',
+              value: '• Video has no captions\n• Video is private/unavailable\n• Transcript service error\n• Rate limiting',
+              inline: false
+            });
+          }
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Transcript test command error:', error);
+          await interaction.editReply('❌ Error testing transcript: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerTranscriptTestCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('transcript-test')
+      .setDescription('Test transcript extraction for a specific video (original quick version)')
+      .addStringOption(option =>
+        option.setName('video-id')
+          .setDescription('YouTube video ID to test')
+          .setRequired(true)
+      );
+    
+    this.commands.set('transcript-test', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const videoId = interaction.options.getString('video-id');
+          console.log(`🎬 Quick testing transcript extraction: ${videoId}`);
+          
+          const transcriptService = await this.serviceManager.getService('transcript');
+          if (!transcriptService) {
+            throw new Error('Transcript service not available');
+          }
+          
+          const startTime = Date.now();
+          const transcript = await transcriptService.getTranscript(videoId);
+          const duration = Date.now() - startTime;
+          
+          if (transcript) {
+            const preview = transcript.length > 200 ? transcript.substring(0, 200) + '...' : transcript;
+            await interaction.editReply(
+              `✅ **Transcript extracted** (${duration}ms)\n` +
+              `📝 Length: ${transcript.length} characters\n` +
+              `📄 Preview: \`${preview}\``
+            );
+          } else {
+            await interaction.editReply(`❌ **Failed to extract transcript** (${duration}ms)`);
+          }
+          
+        } catch (error) {
+          console.error('❌ Transcript test command error:', error);
+          await interaction.editReply('❌ Error: ' + error.message);
+        }
+      }
+    });
+  }
+
+  // === ADMINISTRATION ===
 
   registerTestSummaryCommand() {
     const command = new SlashCommandBuilder()
@@ -607,6 +1158,172 @@ class CommandService {
         } catch (error) {
           console.error('❌ Logs command error:', error);
           await interaction.editReply('❌ Error retrieving logs: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerCheckSummariesCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('check-summaries')
+      .setDescription('Check today\'s summaries and recent cache in detail')
+      .addBooleanOption(option =>
+        option.setName('all-dates')
+          .setDescription('Show summaries from all dates')
+          .setRequired(false)
+      )
+      .addStringOption(option =>
+        option.setName('date')
+          .setDescription('Check specific date (YYYY-MM-DD)')
+          .setRequired(false)
+      );
+    
+    this.commands.set('check-summaries', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const showAll = interaction.options.getBoolean('all-dates') || false;
+          const specificDate = interaction.options.getString('date');
+          
+          console.log(`📋 Checking summaries, showAll: ${showAll}, date: ${specificDate}`);
+          
+          const cacheService = await this.serviceManager.getService('cache');
+          const reportService = await this.serviceManager.getService('report');
+          const databaseService = await this.serviceManager.getService('database');
+          
+          if (!cacheService || !reportService || !databaseService) {
+            throw new Error('Required services not available');
+          }
+          
+          let summaries;
+          let dateLabel = 'today';
+          
+          if (specificDate) {
+            summaries = await databaseService.getSummariesByDate(specificDate);
+            dateLabel = specificDate;
+          } else if (showAll) {
+            summaries = await databaseService.getRecentSummaries(100); // Last 100
+            dateLabel = 'recent';
+          } else {
+            summaries = await reportService.getTodaysSummaries();
+            dateLabel = 'today';
+          }
+          
+          const embed = new EmbedBuilder()
+            .setTitle(`📋 Summary Check Results (${dateLabel})`)
+            .setColor(0x74c0fc)
+            .setTimestamp();
+          
+          if (summaries.length === 0) {
+            embed.setDescription(`📭 No summaries found for ${dateLabel}`);
+          } else {
+            embed.addFields(
+              {
+                name: '📊 Summary Statistics',
+                value: `**Total**: ${summaries.length} summaries\n**Period**: ${dateLabel}`,
+                inline: true
+              }
+            );
+            
+            const recentSummaries = summaries.slice(0, 10); // Show last 10
+            const summaryList = recentSummaries.map(summary => {
+              const timestamp = Math.floor(new Date(summary.created_at).getTime() / 1000);
+              return `• **${summary.title}** - <t:${timestamp}:R>`;
+            }).join('\n');
+            
+            embed.addFields({
+              name: `📝 Recent Summaries (showing ${recentSummaries.length}/${summaries.length})`,
+              value: summaryList.length > 1000 ? summaryList.substring(0, 1000) + '...' : summaryList,
+              inline: false
+            });
+          }
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Check summaries command error:', error);
+          await interaction.editReply('❌ Error checking summaries: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerCheckTranscriptsCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('check-transcripts')
+      .setDescription('Check transcript cache and recent extractions')
+      .addBooleanOption(option =>
+        option.setName('show-details')
+          .setDescription('Show detailed transcript information')
+          .setRequired(false)
+      );
+    
+    this.commands.set('check-transcripts', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const showDetails = interaction.options.getBoolean('show-details') || false;
+          console.log(`🎬 Checking transcripts, details: ${showDetails}`);
+          
+          const cacheService = await this.serviceManager.getService('cache');
+          if (!cacheService) {
+            throw new Error('Cache service not available');
+          }
+          
+          // Get transcript files from cache
+          const cacheStats = await cacheService.getStats();
+          const transcriptFiles = await cacheService.debugCache('transcript');
+          
+          const embed = new EmbedBuilder()
+            .setTitle('🎬 Transcript Cache Check')
+            .setColor(0xffd43b)
+            .setTimestamp();
+          
+          embed.addFields(
+            {
+              name: '📊 Cache Statistics',
+              value: `**Total Files**: ${cacheStats.totalFiles}\n**Transcript Files**: ${Object.keys(transcriptFiles).length}`,
+              inline: true
+            }
+          );
+          
+          if (Object.keys(transcriptFiles).length > 0) {
+            if (showDetails) {
+              let transcriptList = '';
+              Object.entries(transcriptFiles).slice(0, 10).forEach(([filename, info]) => {
+                const timestamp = Math.floor(info.modified / 1000);
+                transcriptList += `• **${filename}** - ${(info.size / 1024).toFixed(1)}KB - <t:${timestamp}:R>\n`;
+              });
+              
+              embed.addFields({
+                name: `📄 Recent Transcripts (showing up to 10)`,
+                value: transcriptList.length > 1000 ? transcriptList.substring(0, 1000) + '...' : transcriptList,
+                inline: false
+              });
+            } else {
+              embed.addFields({
+                name: '📄 Transcript Files',
+                value: `Found ${Object.keys(transcriptFiles).length} cached transcripts\nUse \`show-details:true\` to see file list`,
+                inline: false
+              });
+            }
+          } else {
+            embed.addFields({
+              name: '📭 No Transcripts',
+              value: 'No transcript files found in cache',
+              inline: false
+            });
+          }
+          
+          await interaction.editReply({ embeds: [embed] });
+          
+        } catch (error) {
+          console.error('❌ Check transcripts command error:', error);
+          await interaction.editReply('❌ Error checking transcripts: ' + error.message);
         }
       }
     });
@@ -1200,165 +1917,162 @@ class CommandService {
     });
   }
 
-  registerSetModelCommand() {
+  registerModelCommand() {
     const command = new SlashCommandBuilder()
-      .setName('set-model')
-      .setDescription('Change the OpenAI model used for summaries')
+      .setName('model')
+      .setDescription('Manage OpenAI models (set active model or test before switching)')
       .addStringOption(option =>
-        option.setName('model')
-          .setDescription('Select OpenAI model (100% verified working models only)')
+        option.setName('action')
+          .setDescription('Action to perform')
           .setRequired(true)
           .addChoices(
-            { name: '🚀 GPT-5 (Latest - 2s response)', value: 'gpt-5' },
-            { name: '⚡ GPT-4o (Fast & Reliable - 1.5s)', value: 'gpt-4o' },
-            { name: '💨 GPT-4o Mini (Fastest - 0.8s)', value: 'gpt-4o-mini' },
-            { name: '🎯 GPT-4 Turbo (Balanced - 0.8s)', value: 'gpt-4-turbo' },
-            { name: '🧠 o3 Mini (Reasoning - 1s)', value: 'o3-mini' },
-            { name: '📝 GPT-4 (Classic - 1.6s)', value: 'gpt-4' }
+            { name: '🔄 Set Active Model', value: 'set' },
+            { name: '🧪 Test Model', value: 'test' },
+            { name: '📋 List Available Models', value: 'list' }
+          )
+      )
+      .addStringOption(option =>
+        option.setName('model')
+          .setDescription('Select OpenAI model')
+          .setRequired(false)
+          .addChoices(
+            // Fast & Reliable Category
+            { name: '⚡ GPT-4o (Fast & Reliable)', value: 'gpt-4o' },
+            { name: '💨 GPT-4o Mini (Fastest)', value: 'gpt-4o-mini' },
+            
+            // Latest & Advanced
+            { name: '🚀 GPT-5 (Latest)', value: 'gpt-5' },
+            { name: '🧠 o3 Mini (Reasoning)', value: 'o3-mini' },
+            
+            // Balanced Options  
+            { name: '🎯 GPT-4 Turbo (Balanced)', value: 'gpt-4-turbo' },
+            { name: '� GPT-4 (Classic)', value: 'gpt-4' }
           )
       );
     
-    this.commands.set('set-model', {
+    this.commands.set('model', {
       data: command,
       execute: async (interaction) => {
         await interaction.deferReply();
         
         try {
-          const newModel = interaction.options.getString('model');
-          const oldModel = this.serviceManager.config.openai.model;
+          const action = interaction.options.getString('action');
+          const model = interaction.options.getString('model');
           
-          // Update the configuration
-          this.serviceManager.config.openai.model = newModel;
-          
-          // Get summary service and update its config reference
           const summaryService = await this.serviceManager.getService('summary');
-          if (summaryService) {
-            summaryService.config.model = newModel;
-          }
-          
-          const embed = new EmbedBuilder()
-            .setTitle('✅ Model Updated')
-            .setColor(0x00AE86)
-            .addFields(
-              {
-                name: 'Previous Model',
-                value: `\`${oldModel}\``,
-                inline: true
-              },
-              {
-                name: 'New Model',
-                value: `\`${newModel}\``,
-                inline: true
-              },
-              {
-                name: 'Status',
-                value: '✅ Active - All new summaries will use the new model',
-                inline: false
-              }
-            )
-            .setFooter({ text: 'Note: This change is temporary and will reset on bot restart. For permanent changes, update OPENAI_MODEL environment variable.' })
-            .setTimestamp();
-          
-          await interaction.editReply({ embeds: [embed] });
-          
-          this.logger.info(`OpenAI model changed from ${oldModel} to ${newModel} by ${interaction.user.tag}`);
-        } catch (error) {
-          console.error('❌ Set model command error:', error);
-          await interaction.editReply('❌ Failed to update model');
-        }
-      }
-    });
-  }
-
-  registerTestModelCommand() {
-    const command = new SlashCommandBuilder()
-      .setName('test-model')
-      .setDescription('Test a model with a sample summary to verify it works')
-      .addStringOption(option =>
-        option.setName('model')
-          .setDescription('Model to test')
-          .setRequired(true)
-          .addChoices(
-            { name: '🚀 GPT-5 (Latest - 2s response)', value: 'gpt-5' },
-            { name: '⚡ GPT-4o (Fast & Reliable - 1.5s)', value: 'gpt-4o' },
-            { name: '💨 GPT-4o Mini (Fastest - 0.8s)', value: 'gpt-4o-mini' },
-            { name: '🎯 GPT-4 Turbo (Balanced - 0.8s)', value: 'gpt-4-turbo' },
-            { name: '🧠 o3 Mini (Reasoning - 1s)', value: 'o3-mini' },
-            { name: '📝 GPT-4 (Classic - 1.6s)', value: 'gpt-4' }
-          )
-      );
-    
-    this.commands.set('test-model', {
-      data: command,
-      execute: async (interaction) => {
-        await interaction.deferReply();
-        
-        try {
-          const testModel = interaction.options.getString('model');
-          const summaryService = await this.serviceManager.getService('summary');
-          
           if (!summaryService) {
             throw new Error('Summary service not available');
           }
           
-          // Test with a sample transcript
-          const testTranscript = "This is a test video about artificial intelligence and machine learning. The video explains basic concepts of AI, discusses neural networks, and provides examples of how AI is used in everyday applications like recommendation systems and voice assistants.";
-          
-          const startTime = Date.now();
-          
-          // Temporarily test the model
-          const originalModel = summaryService.config.model;
-          summaryService.config.model = testModel;
-          
-          try {
-            const testSummary = await summaryService.generateSummary(testTranscript, 'test-video-id');
-            const responseTime = Date.now() - startTime;
+          if (action === 'list') {
+            // List available models with current active
+            const currentModel = summaryService.config?.openai?.model || 'Unknown';
             
-            // Restore original model
-            summaryService.config.model = originalModel;
+            const modelInfo = {
+              'gpt-4o': '⚡ **GPT-4o** - Fast & reliable, best overall choice',
+              'gpt-4o-mini': '💨 **GPT-4o Mini** - Fastest response, cost-effective', 
+              'gpt-5': '🚀 **GPT-5** - Latest model with enhanced capabilities',
+              'o3-mini': '🧠 **o3 Mini** - Advanced reasoning capabilities',
+              'gpt-4-turbo': '🎯 **GPT-4 Turbo** - Balanced performance',
+              'gpt-4': '📝 **GPT-4** - Classic, proven model'
+            };
+            
+            let description = `**Current Active Model:** ${currentModel}\n\n**Available Models:**\n\n`;
+            Object.entries(modelInfo).forEach(([key, info]) => {
+              const current = key === currentModel ? ' ← *Current*' : '';
+              description += `${info}${current}\n`;
+            });
             
             const embed = new EmbedBuilder()
-              .setTitle('✅ Model Test Successful')
-              .setColor(0x00AE86)
-              .addFields(
-                { name: 'Model Tested', value: testModel, inline: true },
-                { name: 'Response Time', value: `${responseTime}ms`, inline: true },
-                { name: 'Current Model', value: originalModel, inline: true },
-                { name: 'Test Summary', value: testSummary.length > 1000 ? testSummary.substring(0, 1000) + '...' : testSummary }
-              )
-              .setFooter({ text: 'Use /set-model to switch to this model if satisfied with the test' })
+              .setTitle('🤖 Available OpenAI Models')
+              .setDescription(description)
+              .setColor(0x5865f2)
+              .setFooter({ text: 'Use /model action:test to safely test before switching' })
               .setTimestamp();
             
             await interaction.editReply({ embeds: [embed] });
             
-          } catch (testError) {
-            // Restore original model on error
-            summaryService.config.model = originalModel;
-            throw testError;
+          } else if (action === 'test') {
+            if (!model) {
+              await interaction.editReply('❌ Model parameter required for testing');
+              return;
+            }
+            
+            console.log(`� Testing model: ${model}`);
+            
+            // Test the model with a sample
+            const testPrompt = "Summarize this in one sentence: The sky is blue because of light scattering.";
+            const startTime = Date.now();
+            
+            try {
+              const testResult = await summaryService.testModel(model, testPrompt);
+              const duration = Date.now() - startTime;
+              
+              const embed = new EmbedBuilder()
+                .setTitle(`🧪 Model Test Results: ${model}`)
+                .setColor(0x51cf66)
+                .addFields(
+                  { name: '✅ Status', value: 'Model working correctly', inline: true },
+                  { name: '⏱️ Response Time', value: `${duration}ms`, inline: true },
+                  { name: '📝 Test Response', value: testResult || 'No response received', inline: false }
+                )
+                .setFooter({ text: 'Model is safe to use. Use /model action:set to switch.' })
+                .setTimestamp();
+              
+              await interaction.editReply({ embeds: [embed] });
+            } catch (error) {
+              const embed = new EmbedBuilder()
+                .setTitle(`❌ Model Test Failed: ${model}`)
+                .setColor(0xff6b6b)
+                .addFields(
+                  { name: '❌ Error', value: error.message, inline: false },
+                  { name: '⚠️ Recommendation', value: 'Try a different model or check API configuration', inline: false }
+                )
+                .setTimestamp();
+              
+              await interaction.editReply({ embeds: [embed] });
+            }
+            
+          } else if (action === 'set') {
+            if (!model) {
+              await interaction.editReply('❌ Model parameter required for setting');
+              return;
+            }
+            
+            console.log(`🔄 Setting model to: ${model}`);
+            
+            try {
+              // Update the model
+              await summaryService.updateModel(model);
+              
+              const embed = new EmbedBuilder()
+                .setTitle('✅ Model Updated Successfully')
+                .setColor(0x51cf66)
+                .addFields(
+                  { name: '🤖 New Active Model', value: model, inline: true },
+                  { name: '📊 Status', value: 'All future summaries will use this model', inline: true }
+                )
+                .setFooter({ text: 'Model change effective immediately' })
+                .setTimestamp();
+              
+              await interaction.editReply({ embeds: [embed] });
+            } catch (error) {
+              await interaction.editReply('❌ Failed to update model: ' + error.message);
+            }
           }
           
         } catch (error) {
-          console.error('Error testing model:', error);
-          
-          const embed = new EmbedBuilder()
-            .setTitle('❌ Model Test Failed')
-            .setColor(0xFF0000)
-            .addFields(
-              { name: 'Error', value: error.message },
-              { name: 'Possible Causes', value: '• Model not available in your API tier\n• API rate limits\n• Invalid model name\n• Insufficient credits' }
-            )
-            .setTimestamp();
-          
-          await interaction.editReply({ embeds: [embed] });
+          console.error('❌ Model command error:', error);
+          await interaction.editReply('❌ Error managing model: ' + error.message);
         }
       }
     });
   }
 
-  registerSetScheduleCommand() {
+  registerScheduleCommand() {
     const command = new SlashCommandBuilder()
-      .setName('set-schedule')
-      .setDescription('Update report schedules (daily or weekly)')
+      .setName('schedule')
+      .setDescription('Update report schedules (daily/weekly/monthly)')
       .addStringOption(option =>
         option.setName('report-type')
           .setDescription('Which report schedule to update')
@@ -1403,7 +2117,7 @@ class CommandService {
           )
       );
     
-    this.commands.set('set-schedule', {
+    this.commands.set('schedule', {
       data: command,
       execute: async (interaction) => {
         await interaction.deferReply();
@@ -1573,6 +2287,297 @@ class CommandService {
         } catch (error) {
           console.error('❌ Set schedule command error:', error);
           await interaction.editReply('❌ Failed to update schedule');
+        }
+      }
+    });
+  }
+
+  registerCacheCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('cache')
+      .setDescription('Manage cache system (view stats, debug contents, or clear)')
+      .addStringOption(option =>
+        option.setName('action')
+          .setDescription('Cache action to perform')
+          .setRequired(true)
+          .addChoices(
+            { name: '📊 View Statistics', value: 'stats' },
+            { name: '🔍 Debug Contents', value: 'debug' },
+            { name: '🗑️ Clear Cache', value: 'clear' }
+          )
+      )
+      .addStringOption(option =>
+        option.setName('filter')
+          .setDescription('Filter for debug/clear (e.g., "summaries", "transcripts", specific date)')
+          .setRequired(false)
+      )
+      .addBooleanOption(option =>
+        option.setName('cleanup')
+          .setDescription('Perform automatic cleanup (remove old files)')
+          .setRequired(false)
+      );
+    
+    this.commands.set('cache', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const action = interaction.options.getString('action');
+          const filter = interaction.options.getString('filter') || '';
+          const cleanup = interaction.options.getBoolean('cleanup') || false;
+          
+          const cacheService = await this.serviceManager.getService('cache');
+          if (!cacheService) {
+            throw new Error('Cache service not available');
+          }
+          
+          if (action === 'stats') {
+            console.log(`💾 Cache stats via command, cleanup: ${cleanup}`);
+            
+            const stats = await cacheService.getStats();
+            
+            let description = `📊 **Cache Statistics:**\n`;
+            description += `• Total files: ${stats.totalFiles}\n`;
+            description += `• Total size: ${(stats.totalSize / 1024 / 1024).toFixed(2)} MB\n`;
+            
+            if (stats.breakdown) {
+              description += `\n📁 **File Types:**\n`;
+              Object.entries(stats.breakdown).forEach(([type, count]) => {
+                description += `• ${type}: ${count} files\n`;
+              });
+            }
+            
+            if (cleanup) {
+              description += `\n🧹 **Cleanup Results:**\n`;
+              const cleanupResults = await cacheService.cleanup();
+              description += `• Removed ${cleanupResults.removed} old files\n`;
+              description += `• Freed ${(cleanupResults.spaceSaved / 1024 / 1024).toFixed(2)} MB\n`;
+            }
+            
+            const embed = new EmbedBuilder()
+              .setTitle('💾 Cache Management')
+              .setDescription(description)
+              .setColor(0x74c0fc)
+              .setTimestamp();
+            
+            await interaction.editReply({ embeds: [embed] });
+            
+          } else if (action === 'debug') {
+            console.log(`🔍 Debugging cache with filter: "${filter}"`);
+            
+            const debugInfo = await cacheService.debugCache(filter);
+            
+            let description = '🔍 **Cache Debug Results:**\n\n';
+            
+            if (Object.keys(debugInfo).length === 0) {
+              description += '📭 No cache files found matching the filter.';
+            } else {
+              Object.entries(debugInfo).forEach(([filename, info]) => {
+                description += `📄 **${filename}**\n`;
+                description += `• Size: ${(info.size / 1024).toFixed(2)} KB\n`;
+                description += `• Modified: <t:${Math.floor(info.modified / 1000)}:R>\n\n`;
+              });
+              
+              if (description.length > 1900) {
+                description = description.substring(0, 1900) + '\n... (output truncated)';
+              }
+            }
+            
+            const embed = new EmbedBuilder()
+              .setTitle('🔍 Cache Debug Results')
+              .setDescription(description)
+              .setColor(0xffd43b)
+              .setTimestamp();
+            
+            await interaction.editReply({ embeds: [embed] });
+            
+          } else if (action === 'clear') {
+            console.log(`🗑️ Clearing cache with filter: "${filter}"`);
+            
+            let results = [];
+            
+            if (filter === 'summaries') {
+              const cleared = await cacheService.clearSummaries();
+              results.push(`✅ Cleared ${cleared} summary files`);
+            } else if (filter === 'reports') {
+              const cleared = await cacheService.clearReports();
+              results.push(`✅ Cleared ${cleared} report files`);
+            } else if (filter === 'all' || filter === '') {
+              const summariesCleared = await cacheService.clearSummaries();
+              const reportsCleared = await cacheService.clearReports();
+              results.push(`✅ Cleared ${summariesCleared} summary files`);
+              results.push(`✅ Cleared ${reportsCleared} report files`);
+            } else if (filter.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              // Date format YYYY-MM-DD
+              const cleared = await cacheService.clearByDate(filter);
+              results.push(`✅ Cleared ${cleared} files from ${filter}`);
+            } else {
+              results.push('❌ Invalid filter. Use: summaries, reports, all, or YYYY-MM-DD format');
+            }
+            
+            const embed = new EmbedBuilder()
+              .setTitle('🗑️ Cache Clear Results')
+              .setDescription(results.join('\n'))
+              .setColor(results.some(r => r.includes('❌')) ? 0xff6b6b : 0x51cf66)
+              .setTimestamp();
+            
+            await interaction.editReply({ embeds: [embed] });
+          }
+          
+        } catch (error) {
+          console.error('❌ Cache command error:', error);
+          await interaction.editReply('❌ Error managing cache: ' + error.message);
+        }
+      }
+    });
+  }
+
+  registerPromptsCommand() {
+    const command = new SlashCommandBuilder()
+      .setName('prompts')
+      .setDescription('Manage Discord prompts (reload from pinned messages or validate)')
+      .addStringOption(option =>
+        option.setName('action')
+          .setDescription('Prompt action to perform')
+          .setRequired(true)
+          .addChoices(
+            { name: '🔄 Reload All Prompts', value: 'reload' },
+            { name: '✅ Validate Prompts', value: 'validate' },
+            { name: '📋 List Prompt Channels', value: 'list' }
+          )
+      );
+    
+    this.commands.set('prompts', {
+      data: command,
+      execute: async (interaction) => {
+        await interaction.deferReply();
+        
+        try {
+          const action = interaction.options.getString('action');
+          
+          const discordService = await this.serviceManager.getService('discord');
+          if (!discordService) {
+            throw new Error('Discord service not available');
+          }
+          
+          if (action === 'reload') {
+            console.log('🔄 Reloading prompts via command...');
+            
+            const results = [];
+            
+            // Reload prompts for all channels
+            const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+            if (guild) {
+              const summaryPromptChannels = guild.channels.cache.filter(
+                ch => ch.name && (
+                  ch.name.startsWith(discordService.config.prefixes.summaryPrompt) ||
+                  ch.name === 'yt-summary-prompt'
+                )
+              );
+              
+              for (const [channelId, channel] of summaryPromptChannels) {
+                try {
+                  const prompt = await discordService.getPromptFromChannel(channel.name);
+                  let suffix;
+                  if (channel.name.startsWith(discordService.config.prefixes.summaryPrompt)) {
+                    suffix = channel.name.replace(discordService.config.prefixes.summaryPrompt, '');
+                  } else {
+                    suffix = '(base)';
+                  }
+                  results.push(`✅ Summary Prompt ${suffix}: ${prompt ? 'Reloaded' : 'Not found'}`);
+                } catch (error) {
+                  let suffix;
+                  if (channel.name.startsWith(discordService.config.prefixes.summaryPrompt)) {
+                    suffix = channel.name.replace(discordService.config.prefixes.summaryPrompt, '');
+                  } else {
+                    suffix = '(base)';
+                  }
+                  results.push(`❌ Summary Prompt ${suffix}: ${error.message}`);
+                }
+              }
+              
+              // Reload weekly/monthly report prompts
+              ['weekly', 'monthly'].forEach(reportType => {
+                const channelName = `yt-${reportType}-report-prompt`;
+                const channel = guild.channels.cache.find(ch => ch.name === channelName);
+                if (channel) {
+                  try {
+                    discordService.getPromptFromChannel(channelName);
+                    results.push(`✅ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report Prompt: Reloaded`);
+                  } catch (error) {
+                    results.push(`❌ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report Prompt: ${error.message}`);
+                  }
+                }
+              });
+            }
+            
+            const embed = new EmbedBuilder()
+              .setTitle('🔄 Prompt Reload Results')
+              .setDescription(results.join('\n'))
+              .setColor(results.some(r => r.includes('❌')) ? 0xff6b6b : 0x51cf66)
+              .setTimestamp();
+            
+            await interaction.editReply({ embeds: [embed] });
+            
+          } else if (action === 'validate') {
+            console.log('✅ Validating prompts via command...');
+            
+            const validation = await discordService.validateAllPrompts();
+            
+            let description = '';
+            validation.forEach(result => {
+              const status = result.valid ? '✅' : '❌';
+              description += `${status} ${result.channel}: ${result.message}\n`;
+            });
+            
+            const embed = new EmbedBuilder()
+              .setTitle('✅ Prompt Validation Results')
+              .setDescription(description)
+              .setColor(validation.every(r => r.valid) ? 0x51cf66 : 0xff6b6b)
+              .setTimestamp();
+            
+            await interaction.editReply({ embeds: [embed] });
+            
+          } else if (action === 'list') {
+            console.log('📋 Listing prompt channels via command...');
+            
+            const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
+            if (!guild) {
+              throw new Error('Guild not found');
+            }
+            
+            const promptChannels = guild.channels.cache.filter(
+              ch => ch.name && (
+                ch.name.includes('prompt') ||
+                ch.name.startsWith(discordService.config.prefixes.summaryPrompt)
+              )
+            );
+            
+            let description = '📋 **Prompt Channels:**\n\n';
+            
+            if (promptChannels.size === 0) {
+              description += '📭 No prompt channels found.';
+            } else {
+              promptChannels.forEach(channel => {
+                description += `📄 **#${channel.name}**\n`;
+                description += `• Type: ${channel.type}\n`;
+                description += `• Created: <t:${Math.floor(channel.createdTimestamp / 1000)}:R>\n\n`;
+              });
+            }
+            
+            const embed = new EmbedBuilder()
+              .setTitle('📋 Prompt Channels')
+              .setDescription(description)
+              .setColor(0x5865f2)
+              .setTimestamp();
+            
+            await interaction.editReply({ embeds: [embed] });
+          }
+          
+        } catch (error) {
+          console.error('❌ Prompts command error:', error);
+          await interaction.editReply('❌ Error managing prompts: ' + error.message);
         }
       }
     });
