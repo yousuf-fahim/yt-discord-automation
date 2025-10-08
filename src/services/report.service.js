@@ -1102,54 +1102,6 @@ Generated on ${new Date().toLocaleString()}`;
       throw error;
     }
   }
-
-  /**
-   * Send daily report to Discord (compatibility method)
-   */
-  async sendDailyReport(discordService) {
-    try {
-      this.logger.info('Sending daily report via service method');
-      
-      // Generate the daily report
-      const report = await this.generateDailyReport();
-      
-      if (!report) {
-        throw new Error('Failed to generate daily report');
-      }
-
-      // Get the guild
-      const guild = discordService.client.guilds.cache.get(discordService.config.guildId);
-      if (!guild) {
-        throw new Error('Guild not found');
-      }
-
-      // Find daily report channels
-      const dailyReportChannels = guild.channels.cache.filter(
-        ch => ch.name && ch.name.includes('daily-report')
-      );
-
-      if (dailyReportChannels.size === 0) {
-        throw new Error('No daily report channels found');
-      }
-
-      // Send to all daily report channels
-      for (const [id, channel] of dailyReportChannels) {
-        try {
-          await channel.send({
-            content: `# 📊 Daily YouTube Summary Report\n\n${report.data || report}`
-          });
-          this.logger.info(`Daily report sent to ${channel.name}`);
-        } catch (error) {
-          this.logger.error(`Failed to send daily report to ${channel.name}:`, error);
-        }
-      }
-
-      return true;
-    } catch (error) {
-      this.logger.error('Error sending daily report:', error);
-      throw error;
-    }
-  }
 }
 
 module.exports = ReportService;

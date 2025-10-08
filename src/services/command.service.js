@@ -211,9 +211,13 @@ class CommandService {
           const discordService = await this.serviceManager.getService('discord');
           
           if (channelOption === 'all') {
-            // Trigger all report channels using the report service
+            // Trigger all report channels using the Discord service
             try {
-              await reportService.sendDailyReport(discordService);
+              // Generate the daily report first
+              const report = await reportService.generateDailyReport();
+              
+              // Use Discord service to send to appropriate channels
+              await discordService.sendDailyReport(report);
               results.push(`✅ All Reports: Generated successfully`);
             } catch (error) {
               results.push(`❌ All Reports: ${error.message}`);
