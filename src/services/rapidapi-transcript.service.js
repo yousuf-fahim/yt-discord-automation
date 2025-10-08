@@ -149,7 +149,7 @@ class RapidApiTranscriptService {
       const cacheDir = this.config.cacheDir;
       await fs.mkdir(cacheDir, { recursive: true });
       
-      const cacheFile = path.join(cacheDir, `${videoId}_rapidapi_transcript.json`);
+      const cacheFile = path.join(cacheDir, `transcription_${videoId}_rapidapi.json`);
       const cacheData = {
         videoId,
         transcript,

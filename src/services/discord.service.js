@@ -411,7 +411,7 @@ ${transcript}`;
 
       // Create file buffer
       const buffer = Buffer.from(fileContent, 'utf8');
-      const filename = `${videoTitle}.txt`;
+      const filename = `transcription_${videoTitle}.txt`;
 
       // Send file without extra headers
       await transcriptChannel.send({
@@ -538,7 +538,10 @@ ${transcript}`;
       });
       
       // Send summary to the channel without extra headers
-      await this.sendLongMessage(channel, summaryContent);
+      await this.sendLongMessage(channel, summaryContent, {
+        fileName: `summary_${videoTitle}`,
+        fileFormat: 'txt'
+      });
       
       this.logger.info(`Summary sent to ${channel.name}`);
     } catch (error) {
@@ -557,7 +560,7 @@ ${transcript}`;
     const { 
       fileFormat = 'txt', 
       fileName = `output_${Date.now()}`, 
-      fallbackMessage = 'Content too long for Discord. See attached file.',
+      fallbackMessage = '', // Removed "Content too long" message
       forceFile = false  // Option to force file attachment even if content fits
     } = options;
 
@@ -642,7 +645,7 @@ ${transcript}`;
     const { 
       fileFormat = 'txt', 
       fileName = `prompt_${Date.now()}`, 
-      fallbackMessage = 'Prompt too long for Discord. See attached file.' 
+      fallbackMessage = '' // Removed "Prompt too long" message
     } = options;
 
     // If prompt is short enough, send directly
@@ -875,7 +878,11 @@ ${transcript}`;
       
       if (outputChannel) {
         this.logger.info(`Sending custom daily report to channel: ${outputChannel.name}`);
-        await this.sendLongMessage(outputChannel, customReport);
+        const today = new Date().toISOString().split('T')[0];
+        await this.sendLongMessage(outputChannel, customReport, {
+          fileName: `daily_report_${today}`,
+          fileFormat: 'txt'
+        });
         this.logger.info(`Custom daily report sent to ${outputChannel.name}`);
       } else {
         this.logger.error('No suitable output channel found for custom daily report');
@@ -1004,7 +1011,12 @@ ${transcript}`;
       
       if (outputChannel) {
         this.logger.info(`Sending weekly report to channel: ${outputChannel.name}`);
-        await this.sendLongMessage(outputChannel, report.data);
+        const today = new Date();
+        const weekStart = new Date(today.setDate(today.getDate() - today.getDay() + 1)).toISOString().split('T')[0];
+        await this.sendLongMessage(outputChannel, report.data, {
+          fileName: `weekly_report_${weekStart}`,
+          fileFormat: 'txt'
+        });
         this.logger.info(`Weekly report sent to ${outputChannel.name}`);
       } else {
         this.logger.error('No suitable output channel found for weekly report');
@@ -1021,7 +1033,12 @@ ${transcript}`;
                            guild.channels.cache.find(ch => ch.name && ch.name.includes('general'));
       
       if (outputChannel) {
-        await this.sendLongMessage(outputChannel, report.data);
+        const today = new Date();
+        const weekStart = new Date(today.setDate(today.getDate() - today.getDay() + 1)).toISOString().split('T')[0];
+        await this.sendLongMessage(outputChannel, report.data, {
+          fileName: `weekly_report_${weekStart}`,
+          fileFormat: 'txt'
+        });
         this.logger.info(`Default weekly report sent to ${outputChannel.name}`);
       } else {
         this.logger.error('No suitable channel found for default weekly report');
@@ -1115,7 +1132,12 @@ ${transcript}`;
       
       if (outputChannel) {
         this.logger.info(`Sending monthly report to channel: ${outputChannel.name}`);
-        await this.sendLongMessage(outputChannel, report.data);
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+        await this.sendLongMessage(outputChannel, report.data, {
+          fileName: `monthly_report_${monthKey}`,
+          fileFormat: 'txt'
+        });
         this.logger.info(`Monthly report sent to ${outputChannel.name}`);
       } else {
         this.logger.error('No suitable output channel found for monthly report');
@@ -1132,7 +1154,12 @@ ${transcript}`;
                            guild.channels.cache.find(ch => ch.name && ch.name.includes('general'));
       
       if (outputChannel) {
-        await this.sendLongMessage(outputChannel, report.data);
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+        await this.sendLongMessage(outputChannel, report.data, {
+          fileName: `monthly_report_${monthKey}`,
+          fileFormat: 'txt'
+        });
         this.logger.info(`Default monthly report sent to ${outputChannel.name}`);
       } else {
         this.logger.error('No suitable channel found for default monthly report');
@@ -1167,7 +1194,11 @@ ${transcript}`;
       }
       
       this.logger.info(`Sending default daily report to channel: ${reportChannel.name}`);
-      await this.sendLongMessage(reportChannel, report);
+      const today = new Date().toISOString().split('T')[0];
+      await this.sendLongMessage(reportChannel, report, {
+        fileName: `daily_report_${today}`,
+        fileFormat: 'txt'
+      });
       this.logger.info('Default daily report sent to channel');
     } catch (error) {
       this.logger.error('Error sending default daily report', error);

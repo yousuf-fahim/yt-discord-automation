@@ -928,7 +928,7 @@ class CommandService {
               { 
                 fileName: 'summary_check', 
                 fileFormat: 'txt',
-                fallbackMessage: 'Summary check results are too long for Discord. See attached file.'
+                fallbackMessage: '' // Removed "too long" message
               }
             );
           } else {

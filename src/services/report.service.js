@@ -1089,7 +1089,11 @@ Generated on ${new Date().toLocaleString()}`;
       }
       
       // Send the report
-      await discordService.sendLongMessage(reportChannel, content);
+      const today = new Date().toISOString().split('T')[0];
+      await discordService.sendLongMessage(reportChannel, content, {
+        fileName: `daily_report_${today}`,
+        fileFormat: 'txt'
+      });
       
       this.logger.info('Daily report sent to Discord channel');
       return true;

@@ -33,8 +33,8 @@ async function saveTranscript(videoId, transcript, videoTitle) {
       .replace(/\s+/g, '-') // Replace spaces with hyphens
       .toLowerCase();
     
-    // Use both title and ID to ensure uniqueness
-    const filePath = path.join(CACHE_DIR, `${safeTitle}-${videoId}.txt`);
+    // Use both title and ID to ensure uniqueness with transcription prefix
+    const filePath = path.join(CACHE_DIR, `transcription_${safeTitle}-${videoId}.txt`);
     await fs.writeFile(filePath, transcript, 'utf8');
     console.log(`Transcript cached for video ${videoId} with title: ${videoTitle}`);
   } catch (error) {
@@ -83,7 +83,7 @@ async function getTranscriptFromCache(videoId) {
 async function saveSummary(videoId, promptIndex, summary) {
   try {
     await ensureCacheDir();
-    const filePath = path.join(CACHE_DIR, `${videoId}_summary_${promptIndex}.json`);
+    const filePath = path.join(CACHE_DIR, `summary_${videoId}_${promptIndex}.json`);
     await fs.writeFile(filePath, JSON.stringify({
       videoId,
       promptIndex,
