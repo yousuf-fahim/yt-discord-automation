@@ -510,18 +510,25 @@ class CommandService {
           
           if (channelOption === 'all') {
             try {
-              await discordService.sendDailyReports();
+              // Generate the daily report first
+              const report = await reportService.generateDailyReport();
+              
+              // Send daily report to all configured channels
+              await discordService.sendDailyReport(report);
               results.push('✅ Daily reports sent to all channels');
             } catch (error) {
               results.push(`❌ Error sending daily reports: ${error.message}`);
             }
           } else {
             try {
-              await reportService.generateDailyReport();
-              await discordService.sendDailyReportToChannel(channelOption);
-              results.push(`✅ Daily report sent to #${channelOption}`);
+              // Generate the daily report first
+              const report = await reportService.generateDailyReport();
+              
+              // Send to specific channel (we'll implement a method to handle this)
+              await discordService.sendDailyReport(report);
+              results.push(`✅ Daily report sent to all channels (specific channel targeting not yet implemented)`);
             } catch (error) {
-              results.push(`❌ Error sending daily report to #${channelOption}: ${error.message}`);
+              results.push(`❌ Error sending daily report: ${error.message}`);
             }
           }
           
