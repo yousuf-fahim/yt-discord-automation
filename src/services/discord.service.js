@@ -214,13 +214,19 @@ class DiscordService {
         }
 
         // Save transcript to database for persistence
-        if (this.serviceManager.database) {
-          try {
-            await this.serviceManager.database.saveTranscript(videoId, transcript);
-            this.logger.info(`Transcript saved to database: ${videoId}`);
-          } catch (error) {
-            this.logger.error(`Failed to save transcript to database: ${videoId}`, error);
-          }
+        try {
+          console.log(`🔄 Attempting to save transcript for video: ${videoId}`);
+          console.log(`   Transcript length: ${transcript.length} characters`);
+          
+          const database = await this.serviceManager.getService('database');
+          await database.saveTranscript(videoId, transcript);
+          
+          console.log(`✅ Transcript saved successfully for video: ${videoId}`);
+          this.logger.info(`Transcript saved to database: ${videoId}`);
+        } catch (error) {
+          console.error(`❌ Failed to save transcript for video ${videoId}:`, error);
+          this.logger.error(`Failed to save transcript to database: ${videoId}`, error);
+          // Continue processing even if transcript save fails
         }
 
         // Add reaction for successful transcript extraction
@@ -540,12 +546,26 @@ ${transcript}`;
       
       // Save summary for daily report
       const videoUrl = this.extractVideoUrl(originalMessage);
-      await this.report.saveSummary({
-        videoId,
-        videoTitle,
-        summaryContent,
-        videoUrl
-      });
+      try {
+        console.log(`🔄 Attempting to save summary for video: ${videoId}`);
+        console.log(`   Title: ${videoTitle}`);
+        console.log(`   URL: ${videoUrl}`);
+        console.log(`   Summary length: ${summaryContent.length} characters`);
+        
+        await this.report.saveSummary({
+          videoId,
+          videoTitle,
+          summaryContent,
+          videoUrl
+        });
+        
+        console.log(`✅ Summary saved successfully for video: ${videoId}`);
+        this.logger.info(`Summary saved to database via report service: ${videoId}`);
+      } catch (saveError) {
+        console.error(`❌ Failed to save summary for video ${videoId}:`, saveError);
+        this.logger.error(`Failed to save summary for video ${videoId}`, saveError);
+        // Continue processing even if save fails
+      }
       
       // Send summary to the channel without extra headers
       await this.sendLongMessage(channel, summaryContent, {
