@@ -213,6 +213,16 @@ class DiscordService {
           return;
         }
 
+        // Save transcript to database for persistence
+        if (this.serviceManager.database) {
+          try {
+            await this.serviceManager.database.saveTranscript(videoId, transcript);
+            this.logger.info(`Transcript saved to database: ${videoId}`);
+          } catch (error) {
+            this.logger.error(`Failed to save transcript to database: ${videoId}`, error);
+          }
+        }
+
         // Add reaction for successful transcript extraction
         await message.react('🗒️');
 

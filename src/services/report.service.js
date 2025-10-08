@@ -156,67 +156,56 @@ class ReportService {
 
   async getRecentSummaries() {
     try {
-      // Get summaries from the last 24 hours
-      const now = new Date();
+      console.log('🔍 Report Debug - Database-first approach:');
       
-      // Get today's date (don't modify time for the actual date lookup)
+      // DATABASE-FIRST: Always check database first for recent summaries
+      if (this.database) {
+        console.log('� Checking database for recent summaries...');
+        const dbSummaries = await this.database.getRecentSummaries(72); // Temporarily using 72 hours to test with Oct 6th data
+        
+        if (dbSummaries && dbSummaries.length > 0) {
+          // Convert database format to expected format
+          const summaries = dbSummaries.map(row => ({
+            videoId: row.video_id,
+            videoTitle: row.title,
+            summaryContent: row.content,
+            videoUrl: row.url,
+            timestamp: row.created_at
+          }));
+          
+          console.log(`📊 Database found ${summaries.length} recent summaries`);
+          return summaries;
+        } else {
+          console.log('📊 Database found 0 recent summaries');
+        }
+      }
+      
+      // FALLBACK: Only use cache if database is unavailable or has no data
+      console.log('📦 Falling back to cache...');
+      
+      const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
       const today = new Date(todayStr);
-      
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       
-      console.log('🔍 Report Debug - Looking for summaries:');
-      console.log(`📅 Today: ${today.toISOString().split('T')[0]}`);
-      console.log(`📅 Yesterday: ${yesterday.toISOString().split('T')[0]}`);
-      console.log(`📅 Current time: ${now.toISOString()}`);
+      console.log(`� Checking cache for: ${todayStr} and ${yesterday.toISOString().split('T')[0]}`);
       
-      // Try to get from cache first (faster)
       const todaySummaries = await this.getSummariesByDate(today);
       const yesterdaySummaries = await this.getSummariesByDate(yesterday);
       
-      console.log(`📊 Today's summaries (cache): ${todaySummaries.length}`);
-      console.log(`📊 Yesterday's summaries (cache): ${yesterdaySummaries.length}`);
+      const allSummaries = [...todaySummaries, ...yesterdaySummaries];
+      console.log(`📊 Cache found ${allSummaries.length} summaries`);
       
-      let allSummaries = [...todaySummaries, ...yesterdaySummaries];
-      
-      // If cache is empty or insufficient, fallback to database
-      if (allSummaries.length === 0 && this.database) {
-        console.log('📋 Cache empty, checking database...');
-        const dbSummaries = await this.database.getRecentSummaries(24);
-        
-        // Convert database format to cache format
-        allSummaries = dbSummaries.map(row => ({
-          videoId: row.video_id,
-          videoTitle: row.title,
-          summaryContent: row.content,
-          videoUrl: row.url,
-          timestamp: row.created_at
-        }));
-        
-        console.log(`📊 Database summaries: ${allSummaries.length}`);
-      }
-      
-      // Combine and filter to last 24 hours
+      // Filter to last 24 hours
       const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      
-      console.log(`🕐 24 hours ago: ${last24Hours.toISOString()}`);
-      console.log(`📊 Total summaries before filtering: ${allSummaries.length}`);
-      
       const filtered = allSummaries.filter(summary => {
-        const hasTimestamp = !!summary.timestamp;
-        const isRecent = hasTimestamp && new Date(summary.timestamp) >= last24Hours;
-        
-        if (!hasTimestamp) {
-          console.log(`⚠️ Summary missing timestamp: ${summary.videoId || 'unknown'}`);
-        }
-        
-        return isRecent;
+        return summary && summary.timestamp && new Date(summary.timestamp) >= last24Hours;
       });
       
-      console.log(`📊 Recent summaries (24hrs): ${filtered.length}`);
-      
+      console.log(`📊 Cache filtered to ${filtered.length} recent summaries`);
       return filtered;
+      
     } catch (error) {
       this.logger.error('Error getting recent summaries', error);
       return [];
