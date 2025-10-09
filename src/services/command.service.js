@@ -305,15 +305,15 @@ class CommandService {
           
           const cacheService = await this.serviceManager.getService('cache');
           const reportService = await this.serviceManager.getService('report');
+          const databaseService = await this.serviceManager.getService('database');
           const discordService = await this.serviceManager.getService('discord');
           
-          if (!cacheService || !reportService || !discordService) {
+          if (!cacheService || !reportService || !discordService || !databaseService) {
             throw new Error('Required services not available');
           }
           
-          // Get today's summaries
-          const today = new Date();
-          const summaries = await reportService.getSummariesByDate(today);
+          // Get today's summaries from database (last 24 hours)
+          const summaries = await databaseService.getRecentSummaries(24);
           
           // Get cache stats
           const cacheStats = await cacheService.getStats();
@@ -338,7 +338,7 @@ class CommandService {
               },
               {
                 name: '📈 Today\'s Activity',
-                value: `**Summaries**: ${summaries.length}\n**Cache Files**: ${cacheStats.totalFiles}\n**Cache Size**: ${(cacheStats.totalSize / 1024 / 1024).toFixed(2)} MB`,
+                value: `**Summaries**: ${summaries.length}\n**Cache Files**: ${cacheStats.totalFiles || 0}\n**Cache Size**: ${cacheStats.totalSize ? (cacheStats.totalSize / 1024 / 1024).toFixed(2) : '0.00'} MB`,
                 inline: true
               },
               {

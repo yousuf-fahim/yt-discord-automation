@@ -727,7 +727,8 @@ class HybridCacheService {
         memorySize: this.memoryCache.size,
         hitRate: this.cacheStats.hits / (this.cacheStats.hits + this.cacheStats.misses) || 0,
         totalFiles: fileCount,
-        totalSize: this.formatBytes(totalSize),
+        totalSize: totalSize, // Return raw bytes for calculations
+        totalSizeFormatted: this.formatBytes(totalSize), // Also provide formatted version
         summaries: categoryCounts.summaries,
         transcripts: categoryCounts.transcripts,
         reports: categoryCounts.reports,
