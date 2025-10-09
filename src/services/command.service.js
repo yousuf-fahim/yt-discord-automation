@@ -312,8 +312,8 @@ class CommandService {
           }
           
           // Get today's summaries
-          const today = new Date().toISOString().split('T')[0];
-          const summaries = await reportService.getTodaysSummaries();
+          const today = new Date();
+          const summaries = await reportService.getSummariesByDate(today);
           
           // Get cache stats
           const cacheStats = await cacheService.getStats();
@@ -1214,7 +1214,7 @@ class CommandService {
             summaries = await databaseService.getRecentSummaries(100); // Last 100
             dateLabel = 'recent';
           } else {
-            summaries = await reportService.getTodaysSummaries();
+            summaries = await reportService.getSummariesByDate(new Date());
             dateLabel = 'today';
           }
           
